@@ -1,0 +1,30 @@
+{
+  "name": "roomease",
+  "private": true,
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "type-check": "turbo type-check",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "db:migrate": "cd packages/database && pnpm prisma migrate dev",
+    "db:seed": "cd packages/database && pnpm prisma db seed",
+    "db:studio": "cd packages/database && pnpm prisma studio",
+    "clean": "turbo clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@turbo/gen": "^1.10.0",
+    "turbo": "^1.10.0",
+    "prettier": "^3.0.0"
+  },
+  "packageManager": "pnpm@8.15.0",
+  "pnpm": {
+    "overrides": {
+      "react": "19.0.0",
+      "react-dom": "18.3.1",
+      "@types/react": "19.0.14"
+    }
+  }
+} 

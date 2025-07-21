@@ -1,0 +1,39 @@
+{
+  "name": "@roomease/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@roomease/api-client": "workspace:*",
+    "@roomease/shared": "workspace:*",
+    "@roomease/ui": "workspace:*",
+    "@tanstack/react-query": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.0.14",
+    "@types/react-dom": "^18.0.0",
+    "autoprefixer": "^10.4.16",
+    "clsx": "^2.0.0",
+    "date-fns": "^2.30.0",
+    "next": "14.0.0",
+    "postcss": "^8.4.31",
+    "react": "^19.0.0",
+    "react-calendar": "^4.8.0",
+    "react-dom": "^18.2.0",
+    "recharts": "^2.8.0",
+    "tailwind-merge": "^2.0.0",
+    "tailwindcss": "^3.3.0"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "eslint-config-next": "14.0.0",
+    "typescript": "^5.3.0"
+  }
+}

@@ -1,0 +1,162 @@
+# 全局配置
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+# 镜像配置
+image:
+  registry: your-registry.com
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# 服务配置
+services:
+  apiGateway:
+    name: api-gateway
+    port: 4000
+    replicas: 3
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  reservation:
+    name: reservation
+    port: 4010
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 300m
+        memory: 512Mi
+
+  room:
+    name: room
+    port: 4011
+    replicas: 2
+
+  pricing:
+    name: pricing
+    port: 4012
+    replicas: 2
+
+  idRecognition:
+    name: id-recognition
+    port: 4013
+    replicas: 1
+
+  notification:
+    name: notification
+    port: 4014
+    replicas: 2
+
+  billing:
+    name: billing
+    port: 4015
+    replicas: 2
+
+  analytics:
+    name: analytics
+    port: 4016
+    replicas: 1
+
+  channelSync:
+    name: channel-sync
+    port: 4017
+    replicas: 1
+
+# 负载均衡配置
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: api.roomease.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: api-gateway
+  tls:
+    - secretName: roomease-api-tls
+      hosts:
+        - api.roomease.com
+
+# 数据库配置
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "roomease123"
+    username: "roomease"
+    password: "roomease123"
+    database: "roomease"
+  primary:
+    persistence:
+      enabled: true
+      size: 50Gi
+    resources:
+      requests:
+        memory: 1Gi
+        cpu: 500m
+      limits:
+        memory: 2Gi
+        cpu: 1000m
+
+# Redis 配置
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: "roomease123"
+  master:
+    persistence:
+      enabled: true
+      size: 10Gi
+
+# RabbitMQ 配置
+rabbitmq:
+  enabled: true
+  auth:
+    username: "roomease"
+    password: "roomease123"
+  persistence:
+    enabled: true
+    size: 10Gi
+
+# 监控配置
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+  grafana:
+    enabled: true
+
+# 自动伸缩配置
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# 安全配置
+security:
+  networkPolicies:
+    enabled: true
+  podSecurityPolicy:
+    enabled: true
+
+# 环境变量
+env:
+  NODE_ENV: production
+  JWT_SECRET: "your-jwt-secret"
+  DATABASE_URL: "postgresql://roomease:roomease123@roomease-postgresql:5432/roomease"
+  REDIS_URL: "redis://:roomease123@roomease-redis-master:6379" 

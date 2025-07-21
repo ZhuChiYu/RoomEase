@@ -1,0 +1,416 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 租户模型
+model Tenant {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  domain      String?  @unique
+  logo        String?
+  timezone    String   @default("Asia/Shanghai")
+  currency    String   @default("CNY")
+  language    String   @default("zh-CN")
+  
+  // 订阅信息
+  subscription   Subscription?
+  subscriptionId String?       @unique
+  
+  // 关联数据
+  users       User[]
+  properties  Property[]
+  reservations Reservation[]
+  auditLogs   AuditLog[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("tenants")
+}
+
+// 用户模型
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  phone       String?  @unique
+  password    String?
+  name        String
+  avatar      String?
+  
+  // 第三方登录
+  wechatUnionId String? @unique
+  wechatOpenId  String?
+  
+  // 角色权限
+  role        UserRole @default(FRONTDESK)
+  permissions String[] // JSON array of permissions
+  
+  // 租户关联
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  // 关联数据
+  reservations Reservation[]
+  auditLogs    AuditLog[]
+  
+  // 认证相关
+  emailVerified    Boolean   @default(false)
+  emailVerifiedAt  DateTime?
+  passwordResetAt  DateTime?
+  lastLoginAt      DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("users")
+}
+
+enum UserRole {
+  OWNER      // 业主
+  MANAGER    // 经理
+  FRONTDESK  // 前台
+  CLEANING   // 清洁
+  FINANCE    // 财务
+}
+
+// 物业/门店模型
+model Property {
+  id          String @id @default(cuid())
+  name        String
+  description String?
+  address     String
+  coordinates Json?   // {lat: number, lng: number}
+  
+  // 联系信息
+  phone       String?
+  email       String?
+  website     String?
+  
+  // 设置
+  timezone    String @default("Asia/Shanghai")
+  currency    String @default("CNY")
+  checkInTime String @default("15:00")
+  checkOutTime String @default("12:00")
+  
+  // 租户关联
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  // 关联数据
+  rooms        Room[]
+  reservations Reservation[]
+  priceRules   PriceRule[]
+  
+  isActive Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("properties")
+}
+
+// 房间模型
+model Room {
+  id          String @id @default(cuid())
+  name        String
+  code        String // 房间编号
+  description String?
+  
+  // 房间设置
+  roomType    String
+  maxGuests   Int    @default(2)
+  bedCount    Int    @default(1)
+  bathroomCount Int  @default(1)
+  area        Float? // 面积 (平方米)
+  floor       Int?
+  
+  // 设施
+  amenities   String[] // JSON array
+  images      String[] // JSON array of image URLs
+  
+  // 基础价格
+  basePrice   Decimal @default(0)
+  
+  // 物业关联
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  
+  // 关联数据
+  reservations     Reservation[]
+  calendarOverrides CalendarOverride[]
+  
+  isActive Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([propertyId, code])
+  @@map("rooms")
+}
+
+// 预订模型
+model Reservation {
+  id          String @id @default(cuid())
+  
+  // 预订基本信息
+  checkInDate  DateTime
+  checkOutDate DateTime
+  guestCount   Int      @default(1)
+  childCount   Int      @default(0)
+  
+  // 价格信息
+  roomRate     Decimal
+  totalAmount  Decimal
+  paidAmount   Decimal  @default(0)
+  currency     String   @default("CNY")
+  
+  // 预订状态
+  status       ReservationStatus @default(PENDING)
+  source       String?           // 来源渠道
+  sourceRef    String?           // 外部预订号
+  
+  // 客人信息 (加密)
+  guestName     String
+  guestPhone    String?
+  guestEmail    String?
+  guestIdNumber String? // 加密存储
+  guestAddress  String? // 加密存储
+  
+  // 特殊要求
+  specialRequests String?
+  notes          String?
+  
+  // 关联
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  roomId     String
+  room       Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  
+  // 身份验证
+  guestIdentities GuestIdentity[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("reservations")
+}
+
+enum ReservationStatus {
+  PENDING     // 待确认
+  CONFIRMED   // 已确认
+  CHECKED_IN  // 已入住
+  CHECKED_OUT // 已退房
+  CANCELLED   // 已取消
+  NO_SHOW     // 未到店
+}
+
+// 客人身份信息模型
+model GuestIdentity {
+  id            String @id @default(cuid())
+  
+  // 身份信息 (加密存储)
+  name          String
+  idType        String // ID_CARD, PASSPORT, etc.
+  idNumber      String // 加密
+  address       String? // 加密
+  nationality   String?
+  
+  // OCR识别信息
+  ocrConfidence Float?
+  ocrRawData    Json?
+  
+  // 关联预订
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("guest_identities")
+}
+
+// 房态日历覆盖模型
+model CalendarOverride {
+  id       String @id @default(cuid())
+  
+  date     DateTime @db.Date
+  price    Decimal?
+  minStay  Int?
+  maxStay  Int?
+  isBlocked Boolean @default(false)
+  reason   String?
+  
+  // 关联房间
+  roomId String
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([roomId, date])
+  @@map("calendar_overrides")
+}
+
+// 价格规则模型
+model PriceRule {
+  id          String @id @default(cuid())
+  name        String
+  description String?
+  
+  // 规则类型
+  type        PriceRuleType
+  priority    Int           @default(0)
+  
+  // 日期范围
+  startDate   DateTime?
+  endDate     DateTime?
+  
+  // 星期
+  weekdays    Int[] // 0=Sunday, 1=Monday, ...
+  
+  // 价格调整
+  adjustment  PriceAdjustment
+  value       Decimal
+  
+  // 最短住期
+  minStay     Int?
+  maxStay     Int?
+  
+  // 关联
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  
+  isActive Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("price_rules")
+}
+
+enum PriceRuleType {
+  SEASONAL    // 季节性
+  WEEKDAY     // 工作日
+  WEEKEND     // 周末
+  HOLIDAY     // 节假日
+  SPECIAL     // 特殊事件
+}
+
+enum PriceAdjustment {
+  FIXED       // 固定价格
+  PERCENTAGE  // 百分比调整
+  AMOUNT      // 金额调整
+}
+
+// 订阅模型
+model Subscription {
+  id              String @id @default(cuid())
+  
+  // 套餐信息
+  plan            SubscriptionPlan
+  status          SubscriptionStatus @default(TRIAL)
+  
+  // 计费周期
+  billingCycle    BillingCycle @default(MONTHLY)
+  amount          Decimal
+  currency        String       @default("CNY")
+  
+  // 订阅时间
+  startDate       DateTime
+  endDate         DateTime?
+  trialEndDate    DateTime?
+  
+  // 支付信息
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  wechatCustomerId     String?
+  
+  // 使用限制
+  maxProperties   Int  @default(1)
+  maxRooms        Int  @default(10)
+  maxSmsPerMonth  Int  @default(0)
+  
+  // 功能权限
+  features        SubscriptionFeature[]
+  
+  // 租户关联
+  tenantId String  @unique
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("subscriptions")
+}
+
+enum SubscriptionPlan {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionFeature {
+  CALENDAR_MANAGEMENT
+  RESERVATION_MANAGEMENT
+  CHANNEL_SYNC
+  PRICE_RULES
+  OCR_RECOGNITION
+  ANALYTICS
+  API_ACCESS
+  WHITE_LABEL
+  PRIORITY_SUPPORT
+}
+
+// 审计日志模型
+model AuditLog {
+  id          String @id @default(cuid())
+  
+  action      String // CREATE, UPDATE, DELETE, etc.
+  resource    String // User, Reservation, etc.
+  resourceId  String
+  
+  // 变更详情
+  oldValues   Json?
+  newValues   Json?
+  
+  // 操作者信息
+  userId   String?
+  user     User?   @relation(fields: [userId], references: [id])
+  userIp   String?
+  userAgent String?
+  
+  // 租户关联
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@map("audit_logs")
+} 

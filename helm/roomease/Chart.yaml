@@ -1,0 +1,31 @@
+apiVersion: v2
+name: roomease
+description: RoomEase 酒店民宿管理系统 Helm Chart
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/roomease/roomease
+sources:
+  - https://github.com/roomease/roomease
+maintainers:
+  - name: RoomEase Team
+    email: support@roomease.com
+keywords:
+  - hotel
+  - management
+  - booking
+  - property
+  - microservices
+dependencies:
+  - name: postgresql
+    version: 12.x.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: 18.x.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+  - name: rabbitmq
+    version: 12.x.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: rabbitmq.enabled 
