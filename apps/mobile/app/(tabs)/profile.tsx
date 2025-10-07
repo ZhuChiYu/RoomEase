@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   View,
   Text,
@@ -10,7 +10,19 @@ import {
   Image,
   Modal,
   TextInput,
+  ActivityIndicator,
 } from 'react-native'
+import { useAppSelector, useAppDispatch } from '../store/hooks'
+import { restoreState } from '../store/calendarSlice'
+import {
+  exportData,
+  importData,
+  exportToCSV,
+  getDataStatistics,
+  applyImportedData,
+  clearAllData,
+} from '../services/dataBackupService'
+import { persistedStorage } from '../services/storage'
 
 interface UserInfo {
   name: string
@@ -58,6 +70,9 @@ function SettingItem({ label, value, type, onPress, onValueChange }: SettingsPro
 }
 
 export default function ProfileScreen() {
+  const dispatch = useAppDispatch()
+  const calendarState = useAppSelector(state => state.calendar)
+  
   const [userInfo, setUserInfo] = useState<UserInfo>({
     name: '张经理',
     email: 'manager@roomease.com',
@@ -72,6 +87,25 @@ export default function ProfileScreen() {
     autoBackup: false,
     darkMode: false,
   })
+
+  const [dataStats, setDataStats] = useState({
+    rooms: 0,
+    reservations: 0,
+    roomStatuses: 0,
+    storageSize: '0 KB',
+  })
+
+  const [isLoading, setIsLoading] = useState(false)
+
+  // 加载数据统计
+  useEffect(() => {
+    loadDataStatistics()
+  }, [calendarState])
+
+  const loadDataStatistics = async () => {
+    const stats = await getDataStatistics()
+    setDataStats(stats)
+  }
 
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [passwordModalVisible, setPasswordModalVisible] = useState(false)
@@ -155,12 +189,108 @@ export default function ProfileScreen() {
   const handleDataExport = () => {
     Alert.alert(
       '数据导出',
-      '选择要导出的数据类型',
+      '选择导出格式和类型',
       [
-        { text: '预订数据', onPress: () => Alert.alert('导出中', '预订数据正在导出...') },
-        { text: '财务数据', onPress: () => Alert.alert('导出中', '财务数据正在导出...') },
-        { text: '客户数据', onPress: () => Alert.alert('导出中', '客户数据正在导出...') },
+        {
+          text: '完整备份（JSON）',
+          onPress: async () => {
+            setIsLoading(true)
+            const result = await exportData()
+            setIsLoading(false)
+            
+            if (result.success) {
+              Alert.alert('导出成功', `数据已导出为JSON文件\n\n包含:\n• ${dataStats.rooms} 个房间\n• ${dataStats.reservations} 条预订\n• ${dataStats.roomStatuses} 条房态记录`)
+            } else {
+              Alert.alert('导出失败', result.error || '未知错误')
+            }
+          }
+        },
+        {
+          text: '预订数据（CSV）',
+          onPress: async () => {
+            setIsLoading(true)
+            const result = await exportToCSV('reservations')
+            setIsLoading(false)
+            
+            if (result.success) {
+              Alert.alert('导出成功', '预订数据已导出为CSV文件，可在Excel中打开')
+            } else {
+              Alert.alert('导出失败', result.error || '未知错误')
+            }
+          }
+        },
+        {
+          text: '房间数据（CSV）',
+          onPress: async () => {
+            setIsLoading(true)
+            const result = await exportToCSV('rooms')
+            setIsLoading(false)
+            
+            if (result.success) {
+              Alert.alert('导出成功', '房间数据已导出为CSV文件，可在Excel中打开')
+            } else {
+              Alert.alert('导出失败', result.error || '未知错误')
+            }
+          }
+        },
         { text: '取消', style: 'cancel' }
+      ]
+    )
+  }
+
+  const handleDataImport = () => {
+    Alert.alert(
+      '数据导入',
+      '⚠️ 重要提示：\n\n导入数据将会替换当前所有本地数据，此操作不可撤销。\n\n建议先导出当前数据进行备份。',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '继续导入',
+          style: 'destructive',
+          onPress: async () => {
+            setIsLoading(true)
+            const result = await importData()
+            setIsLoading(false)
+            
+            if (result.success && result.data) {
+              // 显示导入预览
+              Alert.alert(
+                '确认导入',
+                `即将导入以下数据：\n\n• ${result.data.metadata.totalRooms} 个房间\n• ${result.data.metadata.totalReservations} 条预订\n• ${result.data.metadata.totalRoomStatuses} 条房态记录\n\n导出时间：${new Date(result.data.exportDate).toLocaleString()}\n\n确定要导入吗？`,
+                [
+                  { text: '取消', style: 'cancel' },
+                  {
+                    text: '确定导入',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        // 应用导入的数据
+                        const importedData = applyImportedData(result.data!, 'replace')
+                        
+                        // 更新Redux状态
+                        dispatch(restoreState(importedData))
+                        
+                        // 保存到本地存储
+                        await persistedStorage.saveState({ calendar: importedData })
+                        
+                        Alert.alert('导入成功', '数据已成功导入，应用将自动刷新')
+                        
+                        // 重新加载统计
+                        loadDataStatistics()
+                      } catch (error: any) {
+                        Alert.alert('导入失败', error.message || '未知错误')
+                      }
+                    }
+                  }
+                ]
+              )
+            } else if (result.error === '用户取消了选择') {
+              // 用户取消，不显示错误
+            } else {
+              Alert.alert('导入失败', result.error || '未知错误')
+            }
+          }
+        }
       ]
     )
   }
@@ -168,16 +298,54 @@ export default function ProfileScreen() {
   const handleBackup = () => {
     Alert.alert(
       '数据备份',
-      '确定要备份所有数据吗？',
+      `当前数据统计：\n\n• 房间：${dataStats.rooms} 个\n• 预订：${dataStats.reservations} 条\n• 房态记录：${dataStats.roomStatuses} 条\n• 存储大小：${dataStats.storageSize}\n\n确定要备份所有数据吗？`,
       [
         { text: '取消', style: 'cancel' },
         {
           text: '开始备份',
-          onPress: () => {
-            Alert.alert('备份中', '数据备份正在进行中，请稍等...')
-            setTimeout(() => {
-              Alert.alert('备份完成', '所有数据已成功备份到云端')
-            }, 2000)
+          onPress: async () => {
+            setIsLoading(true)
+            const result = await exportData()
+            setIsLoading(false)
+            
+            if (result.success) {
+              Alert.alert('备份完成', `数据已成功备份并导出\n\n包含:\n• ${dataStats.rooms} 个房间\n• ${dataStats.reservations} 条预订\n• ${dataStats.roomStatuses} 条房态记录\n\n您可以将此文件保存到云盘或其他设备`)
+            } else {
+              Alert.alert('备份失败', result.error || '未知错误')
+            }
+          }
+        }
+      ]
+    )
+  }
+
+  const handleClearData = () => {
+    Alert.alert(
+      '清除所有数据',
+      '⚠️ 警告：此操作将删除所有本地数据，包括房间、预订和房态记录。此操作不可撤销！\n\n建议在清除前先导出备份。',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确认清除',
+          style: 'destructive',
+          onPress: async () => {
+            setIsLoading(true)
+            const result = await clearAllData()
+            setIsLoading(false)
+            
+            if (result.success) {
+              // 重置Redux状态
+              dispatch(restoreState({
+                rooms: [],
+                reservations: [],
+                roomStatuses: [],
+              }))
+              
+              Alert.alert('清除成功', '所有数据已清除，应用将重新初始化')
+              loadDataStatistics()
+            } else {
+              Alert.alert('清除失败', result.error || '未知错误')
+            }
           }
         }
       ]
@@ -264,6 +432,16 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
+      {/* 加载遮罩 */}
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#6366f1" />
+            <Text style={styles.loadingText}>处理中...</Text>
+          </View>
+        </View>
+      )}
+      
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* 用户信息卡片 */}
         <View style={styles.userCard}>
@@ -347,6 +525,30 @@ export default function ProfileScreen() {
         {/* 数据管理 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>数据管理</Text>
+          
+          {/* 数据统计卡片 */}
+          <View style={styles.statsCard}>
+            <Text style={styles.statsTitle}>本地数据统计</Text>
+            <View style={styles.statsGrid}>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{dataStats.rooms}</Text>
+                <Text style={styles.statLabel}>房间</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{dataStats.reservations}</Text>
+                <Text style={styles.statLabel}>预订</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{dataStats.roomStatuses}</Text>
+                <Text style={styles.statLabel}>房态</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{dataStats.storageSize}</Text>
+                <Text style={styles.statLabel}>存储</Text>
+              </View>
+            </View>
+          </View>
+
           <View style={styles.settingsList}>
             <SettingItem
               label="数据导出"
@@ -354,11 +556,25 @@ export default function ProfileScreen() {
               onPress={handleDataExport}
             />
             <SettingItem
+              label="数据导入"
+              type="action"
+              onPress={handleDataImport}
+            />
+            <SettingItem
               label="数据备份"
               type="action"
               onPress={handleBackup}
             />
+            <SettingItem
+              label="清除所有数据"
+              type="action"
+              onPress={handleClearData}
+            />
           </View>
+          
+          <Text style={styles.dataManagementTip}>
+            💡 提示：数据以JSON格式存储在本地，您可以导出备份后在其他设备导入，或在迁移到服务器时使用。
+          </Text>
         </View>
 
         {/* 其他设置 */}
@@ -751,5 +967,72 @@ const styles = StyleSheet.create({
   textArea: {
     height: 80,
     textAlignVertical: 'top',
+  },
+  statsCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  statsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748b',
+    marginBottom: 12,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#6366f1',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  dataManagementTip: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 12,
+    lineHeight: 18,
+    paddingHorizontal: 4,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  loadingContainer: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+    minWidth: 120,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#64748b',
   },
 }) 
