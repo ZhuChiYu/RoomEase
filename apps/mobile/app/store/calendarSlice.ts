@@ -156,6 +156,12 @@ const calendarSlice = createSlice({
         state.roomStatuses.splice(existingIndex, 1)
       }
     },
+
+    // 恢复持久化状态
+    restoreState: (state, action: PayloadAction<CalendarState>) => {
+      console.log('✅ [Redux] 恢复持久化状态:', action.payload)
+      return action.payload
+    },
   },
 })
 
@@ -169,6 +175,7 @@ export const {
   updateRooms,
   setRoomDirty,
   clearRoomDirty,
+  restoreState,
 } = calendarSlice.actions
 
 export default calendarSlice.reducer
