@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { Provider } from 'react-redux'
+import { Text, TextInput } from 'react-native'
 import { store } from './store'
 import { restoreState } from './store/calendarSlice'
 import * as Notifications from 'expo-notifications'
@@ -12,25 +13,36 @@ import { notificationService, addNotificationResponseListener } from './services
 import { initializeLocalData } from './services/localDataService'
 import { persistedStorage } from './services/storage'
 
+// 禁用字体缩放，忽略系统字体大小设置
+// @ts-ignore - Text.defaultProps is not officially typed but works in React Native
+if (Text.defaultProps == null) Text.defaultProps = {}
+// @ts-ignore
+Text.defaultProps.allowFontScaling = false
+
+// @ts-ignore - TextInput.defaultProps is not officially typed but works in React Native
+if (TextInput.defaultProps == null) TextInput.defaultProps = {}
+// @ts-ignore
+TextInput.defaultProps.allowFontScaling = false
+
 // 创建 React Query 客户端
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 2,
       staleTime: 5 * 60 * 1000, // 5 分钟
-      cacheTime: 10 * 60 * 1000, // 10 分钟
+      gcTime: 10 * 60 * 1000, // 10 分钟 (formerly cacheTime)
     },
   },
 })
 
 // 防止启动画面自动隐藏
-SplashScreen.preventAutoHideAsync().catch(() => {
-  console.log('SplashScreen.preventAutoHideAsync() failed - this is expected in some cases')
+SplashScreen.preventAutoHideAsync().catch((err) => {
+  console.log('SplashScreen.preventAutoHideAsync() failed - this is expected in some cases', err)
 })
 
 export default function RootLayout() {
-  const notificationListener = useRef<any>()
-  const responseListener = useRef<any>()
+  const notificationListener = useRef<any>(null)
+  const responseListener = useRef<any>(null)
 
   useEffect(() => {
     // 应用加载完成后隐藏启动画面并初始化通知
@@ -40,11 +52,20 @@ export default function RootLayout() {
         
         // 1. 初始化本地数据（首次启动时）
         console.log('📦 初始化本地数据存储...')
-        await initializeLocalData()
+        try {
+          await initializeLocalData()
+        } catch (e) {
+          console.error('初始化本地数据失败:', e)
+        }
         
         // 2. 恢复持久化的Redux状态
         console.log('🔄 恢复应用状态...')
-        const persistedState = await persistedStorage.getState()
+        let persistedState = null
+        try {
+          persistedState = await persistedStorage.getState()
+        } catch (e) {
+          console.error('获取持久化状态失败:', e)
+        }
         if (persistedState && persistedState.calendar) {
           store.dispatch(restoreState(persistedState.calendar))
           console.log('✅ 状态恢复成功')
@@ -250,6 +271,13 @@ export default function RootLayout() {
             name="add-rooms" 
             options={{ 
               title: '添加房间',
+              headerShown: false
+            }} 
+          />
+          <Stack.Screen 
+            name="edit-order" 
+            options={{ 
+              title: '修改订单',
               headerShown: false
             }} 
           />

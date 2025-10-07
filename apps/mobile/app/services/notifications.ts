@@ -53,7 +53,6 @@ export const notificationService = {
       await AsyncStorage.setItem('expo_push_token', token)
       return token
     } catch (error) {
-      console.error('Error getting Expo push token:', error)
       return null
     }
   },
