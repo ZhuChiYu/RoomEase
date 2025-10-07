@@ -56,6 +56,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="statistics"
+        options={{
+          title: '统计',
+          tabBarIcon: ({ color }) => <TabBarIcon name="statistics" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: '个人中心',

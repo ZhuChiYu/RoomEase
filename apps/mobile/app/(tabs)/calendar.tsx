@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
 import {
   View,
   Text,
@@ -6,1103 +6,882 @@ import {
   StyleSheet,
   TouchableOpacity,
   Dimensions,
-  PanResponder,
-  Alert,
-  Modal,
   TextInput,
+  Modal,
+  ActionSheetIOS,
+  Platform,
+  Alert,
 } from 'react-native'
 import { useRouter } from 'expo-router'
+import { DateWheelPicker } from '../components/DateWheelPicker'
+import { useAppSelector } from '../store/hooks'
 
-const { width, height } = Dimensions.get('window')
+const { width } = Dimensions.get('window')
+const CELL_WIDTH = 100
+const TODAY_CELL_WIDTH = 80
 
-// 日历选择器组件
-interface CalendarPickerProps {
-  visible: boolean
-  onClose: () => void
-  onSelectDate: (date: Date) => void
-  selectedDate: Date
-}
-
-function CalendarPicker({ visible, onClose, onSelectDate, selectedDate }: CalendarPickerProps) {
-  const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate))
-  
-  const getDaysInMonth = (date: Date) => {
-    const year = date.getFullYear()
-    const month = date.getMonth()
-    const firstDay = new Date(year, month, 1)
-    const lastDay = new Date(year, month + 1, 0)
-    const daysInMonth = lastDay.getDate()
-    const startWeekDay = firstDay.getDay()
-    
-    const days = []
-    
-    // 添加上个月的日期
-    for (let i = startWeekDay - 1; i >= 0; i--) {
-      const prevDate = new Date(year, month, -i)
-      days.push({ date: prevDate, isCurrentMonth: false })
-    }
-    
-    // 添加当前月的日期
-    for (let i = 1; i <= daysInMonth; i++) {
-      const date = new Date(year, month, i)
-      days.push({ date, isCurrentMonth: true })
-    }
-    
-    // 添加下个月的日期（补齐6行）
-    const remainingDays = 42 - days.length
-    for (let i = 1; i <= remainingDays; i++) {
-      const nextDate = new Date(year, month + 1, i)
-      days.push({ date: nextDate, isCurrentMonth: false })
-    }
-    
-    return days
-  }
-
-  const formatMonth = (date: Date) => {
-    return `${date.getFullYear()}年${date.getMonth() + 1}月`
-  }
-
-  const isToday = (date: Date) => {
-    const today = new Date()
-    return date.toDateString() === today.toDateString()
-  }
-
-  const isSelected = (date: Date) => {
-    return date.toDateString() === selectedDate.toDateString()
-  }
-
-  const handlePrevMonth = () => {
-    setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
-  }
-
-  const handleNextMonth = () => {
-    setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
-  }
-
-  const handleSelectDate = (date: Date) => {
-    onSelectDate(date)
-    onClose()
-  }
-
-  const days = getDaysInMonth(currentMonth)
-  const weekDays = ['日', '一', '二', '三', '四', '五', '六']
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.calendarModalOverlay}>
-        <View style={styles.calendarModalContent}>
-          {/* 头部 */}
-          <View style={styles.calendarHeader}>
-            <TouchableOpacity onPress={handlePrevMonth}>
-              <Text style={styles.calendarNavButton}>‹</Text>
-            </TouchableOpacity>
-            <Text style={styles.calendarTitle}>{formatMonth(currentMonth)}</Text>
-            <TouchableOpacity onPress={handleNextMonth}>
-              <Text style={styles.calendarNavButton}>›</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* 星期标题 */}
-          <View style={styles.weekHeader}>
-            {weekDays.map(day => (
-              <Text key={day} style={styles.weekDay}>{day}</Text>
-            ))}
-          </View>
-
-          {/* 日期网格 */}
-          <View style={styles.daysGrid}>
-            {days.map((item, index) => (
-              <TouchableOpacity
-                key={index}
-                style={[
-                  styles.dayCell,
-                  isSelected(item.date) && styles.selectedDay,
-                  isToday(item.date) && styles.todayDay,
-                ]}
-                onPress={() => handleSelectDate(item.date)}
-              >
-                <Text style={[
-                  styles.dayText,
-                  !item.isCurrentMonth && styles.otherMonthDay,
-                  isSelected(item.date) && styles.selectedDayText,
-                  isToday(item.date) && styles.todayDayText,
-                ]}>
-                  {item.date.getDate()}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* 按钮 */}
-          <View style={styles.calendarButtons}>
-            <TouchableOpacity style={styles.calendarButton} onPress={onClose}>
-              <Text style={styles.calendarButtonText}>取消</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.calendarButton, styles.calendarConfirmButton]} 
-              onPress={() => handleSelectDate(selectedDate)}
-            >
-              <Text style={[styles.calendarButtonText, styles.calendarConfirmText]}>确定</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  )
-}
-
-// 房间状态枚举
-type RoomStatus = 'available' | 'occupied' | 'cleaning' | 'maintenance' | 'selected'
+type RoomType = '大床房' | '双人房' | '豪华房' | '套房'
 
 interface Room {
   id: string
   name: string
-  type: string
-  floor: number
+  type: RoomType
 }
 
-interface DateCell {
-  date: string
-  status: RoomStatus
-  price?: number
+interface DateData {
+  date: Date
+  dateStr: string
+  rooms: {
+    [roomId: string]: {
+      status: 'available' | 'occupied' | 'dirty' | 'closed'
   guestName?: string
   guestPhone?: string
 }
-
-interface RoomCalendarData {
-  room: Room
-  dates: DateCell[]
+  }
 }
 
-// 生成日期数组
-const generateDates = (startDate: Date, days: number): string[] => {
-  const dates: string[] = []
+// 生成日期数据（从指定日期开始）
+const generateDates = (startDate: Date, days: number = 30): DateData[] => {
+  const dates: DateData[] = []
+  
   for (let i = 0; i < days; i++) {
     const date = new Date(startDate)
     date.setDate(startDate.getDate() + i)
-    dates.push(date.toISOString().split('T')[0])
+    
+    // 生成示例预订数据
+    const rooms: DateData['rooms'] = {}
+    
+    dates.push({
+      date,
+      dateStr: date.toISOString().split('T')[0],
+      rooms
+    })
   }
+  
   return dates
 }
 
-// 生成示例房间数据
-const generateRoomData = (): RoomCalendarData[] => {
-  const today = new Date()
-  const rooms: Room[] = [
-    { id: 'A101', name: 'A101', type: '标准间', floor: 1 },
-    { id: 'A102', name: 'A102', type: '标准间', floor: 1 },
-    { id: 'A103', name: 'A103', type: '豪华间', floor: 1 },
-    { id: 'B201', name: 'B201', type: '标准间', floor: 2 },
-    { id: 'B202', name: 'B202', type: '豪华间', floor: 2 },
-    { id: 'B203', name: 'B203', type: '套房', floor: 2 },
-    { id: 'C301', name: 'C301', type: '标准间', floor: 3 },
-    { id: 'C302', name: 'C302', type: '豪华间', floor: 3 },
-    { id: 'C303', name: 'C303', type: '套房', floor: 3 },
-    { id: 'C304', name: 'C304', type: '总统套房', floor: 3 },
-  ]
-
-  const statuses: RoomStatus[] = ['available', 'occupied', 'cleaning', 'maintenance']
-  const guestNames = ['张三', '李四', '王五', '赵六', '钱七', '孙八', '周九', '吴十']
-  const guestPhones = ['13812345678', '13987654321', '13611223344', '13755667788', '13898765432', '13577889900', '13466778899', '13699887766']
-
-  return rooms.map(room => {
-    const dates: DateCell[] = []
-    
-    // 生成30天的数据（今天前后15天）
-    for (let i = -15; i < 15; i++) {
-      const date = new Date(today)
-      date.setDate(today.getDate() + i)
-      const dateStr = date.toISOString().split('T')[0]
-      
-      // 随机生成状态，增加occupied的概率
-      const randomNum = Math.random()
-      let status: RoomStatus
-      if (randomNum < 0.4) {
-        status = 'available'
-      } else if (randomNum < 0.7) {
-        status = 'occupied'
-      } else if (randomNum < 0.9) {
-        status = 'cleaning'
-      } else {
-        status = 'maintenance'
-      }
-      
-      const dateCell: DateCell = {
-        date: dateStr,
-        status,
-        price: status === 'available' ? Math.floor(Math.random() * 200) + 200 : undefined,
-        guestName: status === 'occupied' ? guestNames[Math.floor(Math.random() * guestNames.length)] : undefined,
-        guestPhone: status === 'occupied' ? guestPhones[Math.floor(Math.random() * guestPhones.length)] : undefined,
-      }
-      
-      dates.push(dateCell)
-    }
-    
-    return { room, dates }
-  })
+// 格式化日期为 MM-DD
+const formatDate = (date: Date): string => {
+  const month = date.getMonth() + 1
+  const day = date.getDate()
+  return `${month}-${String(day).padStart(2, '0')}`
 }
 
-const CELL_WIDTH = 60
-const CELL_HEIGHT = 50
-const ROOM_HEADER_WIDTH = 100
+// 获取星期几
+const getWeekDay = (date: Date): string => {
+  const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  return weekDays[date.getDay()]
+}
+
+// 计算剩余房间数
+const getAvailableRooms = (dateData: DateData, rooms: Room[]): number => {
+  let available = 0
+  rooms.forEach(room => {
+    const roomStatus = dateData.rooms[room.id]
+    if (!roomStatus || roomStatus.status === 'available') {
+      available++
+    }
+  })
+  return available
+}
 
 export default function CalendarScreen() {
   const router = useRouter()
-  const [roomData, setRoomData] = useState<RoomCalendarData[]>(generateRoomData())
-  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set())
-  const [isSelecting, setIsSelecting] = useState(false)
-  const [isInSelectionMode, setIsInSelectionMode] = useState(false) // 新增选择模式状态
-  const [currentWeekStart, setCurrentWeekStart] = useState(0)
-  const [roomEditModalVisible, setRoomEditModalVisible] = useState(false)
-  const [editingRoom, setEditingRoom] = useState<Room | null>(null)
-  const [roomFormData, setRoomFormData] = useState({
-    name: '',
-    type: '',
-    floor: 1,
-  })
-  const [datePickerVisible, setDatePickerVisible] = useState(false)
-  const [selectedStartDate, setSelectedStartDate] = useState(new Date())
-  const [calendarRange, setCalendarRange] = useState(30) // 改为30天（前后15天）
-  const [pageOffset, setPageOffset] = useState(0) // 分页偏移量
+  const dateHeaderScrollRef = useRef<ScrollView>(null)
+  const contentScrollRef = useRef<ScrollView>(null)
+  const isScrollingProgrammatically = useRef(false)
+  const lastScrollX = useRef(0)
+  const scrollSyncTimeout = useRef<any>(null)
   
-  // 长按开始多选
-  const [longPressStarted, setLongPressStarted] = useState(false)
+  // 从Redux获取数据
+  const reduxRooms = useAppSelector(state => state.calendar.rooms)
+  const reduxReservations = useAppSelector(state => state.calendar.reservations)
+  const reduxRoomStatuses = useAppSelector(state => state.calendar.roomStatuses)
   
-  // 滚动引用
-  const dateScrollViewRef = useRef<ScrollView>(null) 
-  const statusScrollViewRef = useRef<ScrollView>(null)
-  const roomsScrollViewRef = useRef<ScrollView>(null)
-  const horizontalScrollViewRef = useRef<ScrollView>(null) // 新增用于水平滚动的引用
-  
-  // 滚动同步控制
-  const isScrollingSyncing = useRef(false)
-  
-  // 滑动手势支持
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => longPressStarted,
-      onMoveShouldSetPanResponder: () => longPressStarted,
-      onPanResponderGrant: (evt) => {
-        if (longPressStarted) {
-          setIsSelecting(true)
-          handleCellTouch(evt.nativeEvent.locationX, evt.nativeEvent.locationY)
-        }
-      },
-      onPanResponderMove: (evt) => {
-        if (isSelecting && longPressStarted) {
-          handleCellTouch(evt.nativeEvent.locationX, evt.nativeEvent.locationY)
-        }
-      },
-      onPanResponderRelease: () => {
-        setIsSelecting(false)
-        setLongPressStarted(false)
-      },
-    })
-  ).current
-
-  const handleCellTouch = (x: number, y: number) => {
-    const roomIndex = Math.floor((y - 80) / CELL_HEIGHT) // 减去标题行高度
-    const dateIndex = Math.floor((x - ROOM_HEADER_WIDTH) / CELL_WIDTH)
-    
-    if (roomIndex >= 0 && roomIndex < roomData.length && 
-        dateIndex >= 0 && dateIndex < roomData[0].dates.length) {
-      const cellKey = `${roomData[roomIndex].room.id}-${roomData[roomIndex].dates[dateIndex].date}`
-      
-      setSelectedCells(prev => {
-        const newSet = new Set(prev)
-        if (newSet.has(cellKey)) {
-          newSet.delete(cellKey)
-        } else {
-          newSet.add(cellKey)
-        }
-        return newSet
-      })
-    }
-  }
-
-  const getStatusColor = (status: RoomStatus, isSelected: boolean): string => {
-    if (isSelected) return '#3b82f6'
-    
-    switch (status) {
-      case 'available': return '#10b981'
-      case 'occupied': return '#ef4444'
-      case 'cleaning': return '#f59e0b'
-      case 'maintenance': return '#8b5cf6'
-      default: return '#6b7280'
-    }
-  }
-
-  const getStatusText = (status: RoomStatus): string => {
-    switch (status) {
-      case 'available': return '可预订'
-      case 'occupied': return '已入住'
-      case 'cleaning': return '清洁中'
-      case 'maintenance': return '维修中'
-      default: return ''
-    }
-  }
-
-  const handleBatchOperation = () => {
-    if (selectedCells.size === 0) {
-      Alert.alert('提示', '请先选择房间和日期')
-      return
-    }
-
-    Alert.alert(
-      '批量操作',
-      `已选择 ${selectedCells.size} 个房间日期`,
-      [
-        { text: '批量入住', onPress: () => handleBatchCheckIn() },
-        { text: '设为维修', onPress: () => batchUpdateStatus('maintenance') },
-        { text: '设为清洁', onPress: () => batchUpdateStatus('cleaning') },
-        { text: '设为可订', onPress: () => batchUpdateStatus('available') },
-        { text: '批量定价', onPress: () => Alert.alert('功能开发中', '批量定价功能即将上线') },
-        { text: '取消', style: 'cancel' }
-      ]
-    )
-  }
-
-  const handleBatchCheckIn = () => {
-    const availableCells = Array.from(selectedCells).filter(cellKey => {
-      const [roomId, date] = cellKey.split('-')
-      const roomItem = roomData.find(r => r.room.id === roomId)
-      const dateCell = roomItem?.dates.find(d => d.date === date)
-      return dateCell?.status === 'available'
-    })
-
-    if (availableCells.length === 0) {
-      Alert.alert('提示', '选择的房间中没有可入住的房间')
-      return
-    }
-
-    Alert.alert(
-      '批量入住确认',
-      `将为 ${availableCells.length} 个可用房间办理入住手续`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '确认入住',
-          onPress: () => {
-            // 模拟批量入住，随机分配客人信息
-            const guestNames = ['李明', '王芳', '张伟', '刘敏', '陈强', '赵丽', '孙涛', '周静']
-            const guestPhones = ['13811112222', '13822223333', '13833334444', '13844445555', '13855556666', '13866667777', '13877778888', '13888889999']
-            
-            setRoomData(prev => 
-              prev.map(roomItem => ({
-                ...roomItem,
-                dates: roomItem.dates.map(dateCell => {
-                  const cellKey = `${roomItem.room.id}-${dateCell.date}`
-                  if (availableCells.includes(cellKey)) {
-                    return {
-                      ...dateCell,
-                      status: 'occupied' as RoomStatus,
-                      guestName: guestNames[Math.floor(Math.random() * guestNames.length)],
-                      guestPhone: guestPhones[Math.floor(Math.random() * guestPhones.length)]
-                    }
-                  }
-                  return dateCell
-                })
-              }))
-            )
-            
-            clearSelection()
-            Alert.alert('入住成功', `已为 ${availableCells.length} 个房间办理入住手续`)
-          }
-        }
-      ]
-    )
-  }
-
-  const batchUpdateStatus = (newStatus: RoomStatus) => {
-    setRoomData(prev => 
-      prev.map(roomItem => ({
-        ...roomItem,
-        dates: roomItem.dates.map(dateCell => {
-          const cellKey = `${roomItem.room.id}-${dateCell.date}`
-          if (selectedCells.has(cellKey)) {
-            return { ...dateCell, status: newStatus }
-          }
-          return dateCell
-        })
-      }))
-    )
-    
-    const selectedCount = selectedCells.size
-    clearSelection() // 操作完成后清除选择
-    Alert.alert('成功', `已更新 ${selectedCount} 个房间状态`)
-  }
-
-  const clearSelection = () => {
-    setSelectedCells(new Set())
-    setIsInSelectionMode(false) // 退出选择模式
-  }
-
-  const handleCellPress = (roomItem: RoomCalendarData, dateCell: DateCell) => {
-    const cellKey = `${roomItem.room.id}-${dateCell.date}`
-    
-    if (isInSelectionMode) {
-      // 在选择模式下，点击切换选中状态
-      setSelectedCells(prev => {
-        const newSet = new Set(prev)
-        if (newSet.has(cellKey)) {
-          newSet.delete(cellKey)
-        } else {
-          newSet.add(cellKey)
-        }
-        return newSet
-      })
-    } else {
-      // 正常模式下的点击处理
-      if (dateCell.status === 'available') {
-        showRoomDetailModal(roomItem, dateCell)
-      } else if (dateCell.status === 'occupied') {
-        showGuestDetailModal(roomItem, dateCell)
+  // 按房型分组房间
+  const roomsByType = useMemo(() => {
+    return reduxRooms.reduce((acc, room) => {
+      if (!acc[room.type]) {
+        acc[room.type] = []
       }
-    }
-  }
-
-  const showRoomDetailModal = (roomItem: RoomCalendarData, dateCell: DateCell) => {
-    Alert.alert(
-      '房间详情',
-      `房间：${roomItem.room.name} (${roomItem.room.type})\n楼层：${roomItem.room.floor}楼\n日期：${dateCell.date}\n价格：¥${dateCell.price}\n状态：可预订`,
-      [
-        {
-          text: '快速预订',
-          onPress: () => {
-            Alert.alert(
-              '预订确认',
-              `确认预订 ${roomItem.room.name} 房间？\n日期：${dateCell.date}\n价格：¥${dateCell.price}`,
-              [
-                {
-                  text: '确认预订',
-                  onPress: () => {
-                    // 模拟预订成功
-                    setRoomData(prev => 
-                      prev.map(item => 
-                        item.room.id === roomItem.room.id
-                          ? {
-                              ...item,
-                              dates: item.dates.map(cell => 
-                                cell.date === dateCell.date
-                                  ? { ...cell, status: 'occupied' as RoomStatus, guestName: '新客人' }
-                                  : cell
-                              )
-                            }
-                          : item
-                      )
-                    )
-                    Alert.alert('预订成功', '房间预订已确认！')
-                  }
-                },
-                { text: '取消', style: 'cancel' }
-              ]
-            )
-          }
-        },
-        { text: '设置价格', onPress: () => Alert.alert('功能开发中', '价格设置功能即将上线') },
-        { text: '取消', style: 'cancel' }
-      ]
-    )
-  }
-
-  const showGuestDetailModal = (roomItem: RoomCalendarData, dateCell: DateCell) => {
-    if (dateCell.guestName && dateCell.guestPhone) {
-      Alert.alert(
-        '客人信息',
-        `房间：${roomItem.room.name}\n客人：${dateCell.guestName}\n入住日期：${dateCell.date}`,
-        [
-          { text: '取消', style: 'cancel' },
-          { 
-            text: '联系客人', 
-            onPress: () => handleContactGuest(dateCell.guestPhone!, dateCell.guestName!)
-          },
-          { 
-            text: '查看详情', 
-            onPress: () => router.push(`/booking-details?id=${roomItem.room.id}-${dateCell.date}`)
-          }
-        ]
-      )
-    }
-  }
-
-  const handleContactGuest = async (phoneNumber: string, guestName: string) => {
-    try {
-      const { Linking } = require('expo-linking')
-      const phoneUrl = `tel:${phoneNumber}`
-      const supported = await Linking.canOpenURL(phoneUrl)
-      
-      if (supported) {
-        Alert.alert(
-          '拨打电话',
-          `确定要联系客人 ${guestName} 吗？\n${phoneNumber}`,
-          [
-            { text: '取消', style: 'cancel' },
-            { 
-              text: '拨打', 
-              onPress: async () => {
-                await Linking.openURL(phoneUrl)
-              }
-            }
-          ]
-        )
-      } else {
-        Alert.alert('错误', '设备不支持拨打电话功能')
-      }
-    } catch (error) {
-      Alert.alert('错误', '拨打电话失败')
-    }
-  }
-
-  const handleRoomEdit = (room: Room) => {
-    setEditingRoom(room)
-    setRoomFormData({
-      name: room.name,
-      type: room.type,
-      floor: room.floor,
+      acc[room.type].push(room)
+      return acc
+    }, {} as { [key in RoomType]: Room[] })
+  }, [reduxRooms])
+  
+  // 所有房间列表
+  const allRooms = reduxRooms
+  
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  
+  // 从7天前开始，显示37天（过去7天+今天+未来29天）
+  const initialStartDate = new Date(today)
+  initialStartDate.setDate(today.getDate() - 7)
+  
+  const [startDate, setStartDate] = useState<Date>(initialStartDate)
+  const [selectedDate, setSelectedDate] = useState<Date>(today)
+  
+  // 根据Redux数据生成日期数据
+  const dates = useMemo(() => {
+    console.log('📅 [Calendar] 生成日期数据...')
+    console.log('📅 [Calendar] Redux数据:', {
+      rooms: reduxRooms.length,
+      reservations: reduxReservations.length,
+      roomStatuses: reduxRoomStatuses.length
     })
-    setRoomEditModalVisible(true)
-  }
-
-  const saveRoomEdit = () => {
-    if (!roomFormData.name.trim() || !roomFormData.type.trim()) {
-      Alert.alert('错误', '请填写完整的房间信息')
-      return
-    }
-
-    if (editingRoom) {
-      // 编辑现有房间
-      setRoomData(prev => 
-        prev.map(item => 
-          item.room.id === editingRoom.id
-            ? {
-                ...item,
-                room: {
-                  ...editingRoom,
-                  name: roomFormData.name,
-                  type: roomFormData.type,
-                  floor: roomFormData.floor,
-                }
-              }
-            : item
-        )
-      )
-    }
-
-    setRoomEditModalVisible(false)
-    setEditingRoom(null)
-    Alert.alert('成功', '房间信息已更新')
-  }
-
-  const deleteRoom = () => {
-    if (!editingRoom) return
-
-    Alert.alert(
-      '删除房间',
-      `确定要删除房间 ${editingRoom.name} 吗？此操作不可撤销。`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: () => {
-            setRoomData(prev => prev.filter(item => item.room.id !== editingRoom.id))
-            setRoomEditModalVisible(false)
-            setEditingRoom(null)
-            Alert.alert('已删除', '房间已成功删除')
-          }
-        }
-      ]
-    )
-  }
-
-  // 生成显示日期（当前日期前后15天）
-  const generateDisplayDates = (centerDate: Date, offset: number = 0) => {
-    const dates = []
-    const startDate = new Date(centerDate)
-    startDate.setDate(startDate.getDate() - 15 + (offset * 30)) // 前15天，加上分页偏移
+    console.log('📅 [Calendar] 预订详情:', reduxReservations)
+    console.log('📅 [Calendar] 房态详情:', reduxRoomStatuses)
     
-    for (let i = 0; i < 30; i++) {
+    const generatedDates: DateData[] = []
+    
+    for (let i = 0; i < 37; i++) {
       const date = new Date(startDate)
       date.setDate(startDate.getDate() + i)
-      dates.push(date.toISOString().split('T')[0])
+      const dateStr = date.toISOString().split('T')[0]
+      
+      // 为每个房间检查房态
+      const rooms: DateData['rooms'] = {}
+      
+      reduxRooms.forEach(room => {
+        // 检查是否有房态记录（关房、脏房等）
+        const roomStatus = reduxRoomStatuses.find(
+          rs => rs.roomId === room.id && rs.date === dateStr
+        )
+        
+        if (roomStatus) {
+          // 如果有房态记录，使用该状态
+          if (roomStatus.status === 'occupied' && roomStatus.reservationId) {
+            // 查找预订信息
+            const reservation = reduxReservations.find(r => r.id === roomStatus.reservationId)
+            if (reservation) {
+              console.log(`✅ [Calendar] 找到预订: ${dateStr} - 房间${room.id} - ${reservation.guestName}`)
+              rooms[room.id] = {
+                status: 'occupied',
+                guestName: reservation.guestName,
+                guestPhone: reservation.guestPhone,
+                channel: reservation.channel,
+              }
+            } else {
+              console.log(`⚠️ [Calendar] 未找到预订信息: reservationId=${roomStatus.reservationId}`)
+            }
+          } else {
+            rooms[room.id] = {
+              status: roomStatus.status,
+            }
+          }
+        } else {
+          // 默认为空房
+          rooms[room.id] = {
+            status: 'available',
+          }
+        }
+      })
+      
+      generatedDates.push({
+        date,
+        dateStr,
+        rooms,
+      })
     }
-    return dates
-  }
-
-  const displayDates = generateDisplayDates(selectedStartDate, pageOffset)
-
-  const handleDateSelect = (date: Date) => {
-    setSelectedStartDate(date)
-    setPageOffset(0) // 重置分页
     
-    // 重新生成房间数据
-    const newDates = generateDisplayDates(date, 0)
-    setRoomData(prev => 
-      prev.map(roomItem => ({
-        ...roomItem,
-        dates: newDates.map(dateStr => {
-          const existingDate = roomItem.dates.find(d => d.date === dateStr)
-          return existingDate || {
-            date: dateStr,
-            status: 'available' as RoomStatus,
-            price: Math.floor(Math.random() * 200) + 200,
-          }
-        })
-      }))
-    )
-  }
+    console.log('📅 [Calendar] 生成完成，共', generatedDates.length, '天')
+    return generatedDates
+  }, [startDate, reduxRooms, reduxReservations, reduxRoomStatuses])
+  
+  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set())
+  const [searchText, setSearchText] = useState('')
+  const [filterModalVisible, setFilterModalVisible] = useState(false)
+  const [datePickerVisible, setDatePickerVisible] = useState(false)
+  const [selectedRoomTypes, setSelectedRoomTypes] = useState<Set<RoomType>>(new Set())
+  // 初始滚动位置应该在今日（第7天的位置）
+  const initialScrollX = 7 * CELL_WIDTH - (width - TODAY_CELL_WIDTH) / 2 + CELL_WIDTH / 2
+  
+  const [scrollX, setScrollX] = useState(Math.max(0, initialScrollX))
+  const [showLeftArrow, setShowLeftArrow] = useState(false)
+  const [showRightArrow, setShowRightArrow] = useState(false)
 
-  const handlePrevPage = () => {
-    setPageOffset(prev => prev - 1)
-    const newDates = generateDisplayDates(selectedStartDate, pageOffset - 1)
-    setRoomData(prev => 
-      prev.map(roomItem => ({
-        ...roomItem,
-        dates: newDates.map(dateStr => {
-          const existingDate = roomItem.dates.find(d => d.date === dateStr)
-          return existingDate || {
-            date: dateStr,
-            status: 'available' as RoomStatus,
-            price: Math.floor(Math.random() * 200) + 200,
-          }
-        })
-      }))
-    )
-  }
-
-  const handleNextPage = () => {
-    setPageOffset(prev => prev + 1)
-    const newDates = generateDisplayDates(selectedStartDate, pageOffset + 1)
-    setRoomData(prev => 
-      prev.map(roomItem => ({
-        ...roomItem,
-        dates: newDates.map(dateStr => {
-          const existingDate = roomItem.dates.find(d => d.date === dateStr)
-          return existingDate || {
-            date: dateStr,
-            status: 'available' as RoomStatus,
-            price: Math.floor(Math.random() * 200) + 200,
-          }
-        })
-      }))
-    )
-  }
-
-  const isToday = (dateStr: string) => {
-    const today = new Date().toISOString().split('T')[0]
-    return dateStr === today
-  }
-
-  const handleTodayPress = () => {
-    const today = new Date()
-    setSelectedStartDate(today)
-    setPageOffset(0)
-    handleDateSelect(today)
+  // 搜索过滤房间
+  const getFilteredRoomTypes = (): RoomType[] => {
+    let types: RoomType[] = selectedRoomTypes.size > 0
+      ? Array.from(selectedRoomTypes)
+      : Object.keys(roomsByType) as RoomType[]
     
-    // 滚动到今日列居中
-    setTimeout(() => {
-      const todayIndex = displayDates.findIndex(date => isToday(date))
-      if (todayIndex !== -1) {
-        const scrollX = todayIndex * CELL_WIDTH - (width - ROOM_HEADER_WIDTH) / 2 + CELL_WIDTH / 2
-        const targetScrollX = Math.max(0, scrollX)
+    if (!searchText.trim()) {
+      return types
+    }
+    
+    const search = searchText.toLowerCase().trim()
+    
+    // 过滤房型，只保留包含匹配房间的房型
+    return types.filter(roomType => {
+      return roomsByType[roomType].some(room => {
+        // 匹配房间号
+        if (room.name.toLowerCase().includes(search)) return true
+        if (room.id.toLowerCase().includes(search)) return true
         
-        // 防止滚动冲突
-        isScrollingSyncing.current = true
+        // 匹配预订信息（客人姓名、手机号）
+        const hasMatchingReservation = reduxReservations.some(reservation => {
+          if (reservation.roomId !== room.id) return false
+          return reservation.guestName.includes(search) || 
+                 reservation.guestPhone.includes(search)
+        })
         
-        // 同步所有水平滚动视图
-        if (dateScrollViewRef.current) {
-          dateScrollViewRef.current.scrollTo({
-            x: targetScrollX,
-            animated: true
-          })
-        }
-        if (horizontalScrollViewRef.current) {
-          horizontalScrollViewRef.current.scrollTo({
-            x: targetScrollX,
-            animated: true
-          })
-        }
+        return hasMatchingReservation
+      })
+    })
+  }
+
+  // 获取过滤后的房间
+  const getFilteredRooms = (roomType: RoomType): Room[] => {
+    if (!searchText.trim()) {
+      return roomsByType[roomType]
+    }
+    
+    const search = searchText.toLowerCase().trim()
+    
+    return roomsByType[roomType].filter(room => {
+      // 匹配房间号
+      if (room.name.toLowerCase().includes(search)) return true
+      if (room.id.toLowerCase().includes(search)) return true
+      
+      // 匹配预订信息
+      const hasMatchingReservation = reduxReservations.some(reservation => {
+        if (reservation.roomId !== room.id) return false
+        return reservation.guestName.includes(search) || 
+               reservation.guestPhone.includes(search)
+      })
+      
+      return hasMatchingReservation
+    })
+  }
+
+  // 滚动到居中位置
+  const scrollToCenter = (index: number) => {
+    if (dateHeaderScrollRef.current && contentScrollRef.current) {
+      const scrollX = index * CELL_WIDTH - (width - TODAY_CELL_WIDTH) / 2 + CELL_WIDTH / 2
+      const targetScrollX = Math.max(0, scrollX)
+      
+      isScrollingProgrammatically.current = true
+      
+      setTimeout(() => {
+        dateHeaderScrollRef.current?.scrollTo({ x: targetScrollX, animated: true })
+        contentScrollRef.current?.scrollTo({ x: targetScrollX, animated: true })
+        lastScrollX.current = targetScrollX
         
-        // 延迟重置同步标志
+        // 重置标志
         setTimeout(() => {
-          isScrollingSyncing.current = false
-        }, 800)
-      }
-    }, 300)
-  }
-
-  const handleCellLongPress = (roomItem: RoomCalendarData, dateCell: DateCell) => {
-    if (!isInSelectionMode) {
-      // 进入选择模式
-      setIsInSelectionMode(true)
-      const cellKey = `${roomItem.room.id}-${dateCell.date}`
-      setSelectedCells(new Set([cellKey]))
+          isScrollingProgrammatically.current = false
+        }, 500)
+      }, 100)
     }
   }
+
+  // 加载前7天数据
+  const loadPreviousDays = () => {
+    const newStartDate = new Date(startDate)
+    newStartDate.setDate(startDate.getDate() - 7)
+    setStartDate(newStartDate)
+    
+    // 保持当前视图位置，滚动到之前的位置+7个单元格
+    isScrollingProgrammatically.current = true
+    
+    setTimeout(() => {
+      const newScrollX = scrollX + 7 * CELL_WIDTH
+      dateHeaderScrollRef.current?.scrollTo({ x: newScrollX, animated: false })
+      contentScrollRef.current?.scrollTo({ x: newScrollX, animated: false })
+      lastScrollX.current = newScrollX
+      setScrollX(newScrollX)
+      
+      // 重置标志
+      setTimeout(() => {
+        isScrollingProgrammatically.current = false
+      }, 100)
+    }, 50)
+  }
+
+  // 加载后7天数据
+  const loadNextDays = () => {
+    // startDate不变，只是显示更多天数（这里保持37天）
+    // 如果需要真的加载更多，可以增加天数参数
+  }
+
+  // 处理日期选择
+  const handleDateSelect = (dateStr: string) => {
+    const newDate = new Date(dateStr)
+    newDate.setHours(0, 0, 0, 0)
+    setSelectedDate(newDate)
+    
+    // 从选中日期的7天前开始生成37天数据
+    const newStartDate = new Date(newDate)
+    newStartDate.setDate(newDate.getDate() - 7)
+    setStartDate(newStartDate)
+    
+    // 滚动到选中的日期（第7天位置）
+    setTimeout(() => {
+      scrollToCenter(7)
+    }, 100)
+  }
+
+  // 回到今日
+  const handleBackToToday = () => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    setSelectedDate(today)
+    
+    // 重置为从7天前开始的37天
+    const newStartDate = new Date(today)
+    newStartDate.setDate(today.getDate() - 7)
+    setStartDate(newStartDate)
+    
+    // 滚动到今日位置（第7天）
+    isScrollingProgrammatically.current = true
+    
+    setTimeout(() => {
+      const todayIndex = 7
+      const targetScrollX = todayIndex * CELL_WIDTH - (width - TODAY_CELL_WIDTH) / 2 + CELL_WIDTH / 2
+      const scrollToX = Math.max(0, targetScrollX)
+      
+      dateHeaderScrollRef.current?.scrollTo({ x: scrollToX, animated: true })
+      contentScrollRef.current?.scrollTo({ x: scrollToX, animated: true })
+      lastScrollX.current = scrollToX
+      setScrollX(scrollToX)
+      
+      // 重置标志
+      setTimeout(() => {
+        isScrollingProgrammatically.current = false
+      }, 500)
+    }, 100)
+  }
+
+  // 处理单元格点击
+  const handleCellPress = (roomId: string, dateIndex: number, roomData?: any) => {
+    console.log('👆 [Calendar] 点击单元格:', { roomId, dateIndex, roomData })
+    
+    // 如果有预订，直接跳转到订单详情页
+    if (roomData && roomData.status === 'occupied') {
+      const dateData = dates[dateIndex]
+      
+      // 查找完整的预订信息
+      const roomStatus = reduxRoomStatuses.find(
+        rs => rs.roomId === roomId && rs.date === dateData.dateStr
+      )
+      
+      const reservation = roomStatus?.reservationId 
+        ? reduxReservations.find(r => r.id === roomStatus.reservationId)
+        : null
+      
+      console.log('📝 [Calendar] 查找到的预订:', reservation)
+      
+      if (reservation) {
+        router.push({
+          pathname: '/order-details',
+          params: {
+            orderId: reservation.orderId,
+            guestName: reservation.guestName,
+            guestPhone: reservation.guestPhone,
+            channel: reservation.channel,
+            checkInDate: reservation.checkInDate,
+            checkOutDate: reservation.checkOutDate,
+            roomType: reservation.roomType,
+            roomPrice: reservation.roomPrice.toString(),
+            guestCount: '1',
+            nights: reservation.nights.toString(),
+            totalAmount: reservation.totalAmount.toString(),
+            paidAmount: (reservation.paidAmount || 0).toString(),
+            remainingAmount: (reservation.totalAmount - (reservation.paidAmount || 0)).toString(),
+          }
+        })
+        return
+      }
+    }
+    
+    // 没有预订，进入选择状态
+    const cellKey = `${roomId}-${dateIndex}`
+      setSelectedCells(prev => {
+        const newSet = new Set(prev)
+        if (newSet.has(cellKey)) {
+          newSet.delete(cellKey)
+        } else {
+          newSet.add(cellKey)
+        }
+        return newSet
+      })
+  }
+
+  // 处理筛选按钮
+  const handleFilterPress = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['取消', '大床房', '双人房', '豪华房', '套房', '全部房型'],
+          cancelButtonIndex: 0,
+        },
+        buttonIndex => {
+          if (buttonIndex === 1) {
+            setSelectedRoomTypes(new Set(['大床房']))
+          } else if (buttonIndex === 2) {
+            setSelectedRoomTypes(new Set(['双人房']))
+          } else if (buttonIndex === 3) {
+            setSelectedRoomTypes(new Set(['豪华房']))
+          } else if (buttonIndex === 4) {
+            setSelectedRoomTypes(new Set(['套房']))
+          } else if (buttonIndex === 5) {
+            setSelectedRoomTypes(new Set())
+          }
+        }
+        )
+      } else {
+      setFilterModalVisible(true)
+    }
+  }
+
+  // 清除选择
+  const handleClearSelection = () => {
+    setSelectedCells(new Set())
+  }
+
+  // 判断单元格是否被选中
+  const isCellSelected = (roomId: string, dateIndex: number) => {
+    return selectedCells.has(`${roomId}-${dateIndex}`)
+  }
+
+  // 判断是否是今天
+  const isToday = (date: Date): boolean => {
+    const today = new Date()
+    return date.getDate() === today.getDate() &&
+           date.getMonth() === today.getMonth() &&
+           date.getFullYear() === today.getFullYear()
+  }
+
+  // 格式化选中的日期显示
+  const formatSelectedDate = (date: Date): string => {
+    return `${date.getMonth() + 1}月${String(date.getDate()).padStart(2, '0')}日`
+  }
+
+  // 判断是否应该显示"回到今日"按钮
+  // 根据滚动距离判断：滚动超过5个单元格宽度就显示
+  const shouldShowTodayButton = (): boolean => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    // 找到今日在dates数组中的索引
+    const todayIndex = dates.findIndex(d => {
+      const date = new Date(d.date)
+      date.setHours(0, 0, 0, 0)
+      return date.getTime() === today.getTime()
+    })
+    
+    if (todayIndex === -1) {
+      // 如果dates中没有今日，说明滚动很远了，显示按钮
+      return true
+    }
+    
+    // 计算今日应该在的位置
+    const todayCenterX = todayIndex * CELL_WIDTH - (width - TODAY_CELL_WIDTH) / 2 + CELL_WIDTH / 2
+    const todayScrollX = Math.max(0, todayCenterX)
+    
+    // 如果当前滚动位置距离今日位置超过5个单元格宽度，显示按钮
+    const distanceFromToday = Math.abs(scrollX - todayScrollX)
+    return distanceFromToday > CELL_WIDTH * 5
+  }
+
+  // 初始化：滚动到今日位置
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const todayIndex = 7 // 今日在数组中的索引（从0开始的第7天）
+      const targetScrollX = todayIndex * CELL_WIDTH - (width - TODAY_CELL_WIDTH) / 2 + CELL_WIDTH / 2
+      const scrollToX = Math.max(0, targetScrollX)
+      
+      isScrollingProgrammatically.current = true
+      dateHeaderScrollRef.current?.scrollTo({ x: scrollToX, animated: false })
+      contentScrollRef.current?.scrollTo({ x: scrollToX, animated: false })
+      lastScrollX.current = scrollToX
+      
+        setTimeout(() => {
+        isScrollingProgrammatically.current = false
+      }, 100)
+    }, 100)
+    
+    return () => {
+      clearTimeout(timer)
+      if (scrollSyncTimeout.current) {
+        clearTimeout(scrollSyncTimeout.current)
+      }
+    }
+  }, [])
+
+  const displayRoomTypes = getFilteredRoomTypes()
 
   return (
     <View style={styles.container}>
-      {/* 顶部操作栏 */}
-      <View style={styles.header}>
-        <Text style={styles.title}>房态日历</Text>
-        <View style={styles.headerActions}>
-                     {selectedCells.size > 0 ? (
-             <>
-               <TouchableOpacity 
-                 style={styles.actionBtn}
-                 onPress={clearSelection}
-               >
-                 <Text style={styles.actionBtnText}>清除选择</Text>
+      {/* 搜索栏 */}
+      <View style={styles.searchBar}>
+        <View style={styles.searchInputContainer}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="房间号/姓名/手机号/订单号"
+            value={searchText}
+            onChangeText={setSearchText}
+            placeholderTextColor="#999"
+          />
+          {searchText.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchText('')}>
+              <Text style={styles.clearIcon}>✕</Text>
                </TouchableOpacity>
-               <TouchableOpacity 
-                 style={[styles.actionBtn, styles.primaryBtn]}
-                 onPress={handleBatchOperation}
-               >
-                 <Text style={[styles.actionBtnText, { color: 'white' }]}>
-                   批量操作({selectedCells.size})
-                 </Text>
-               </TouchableOpacity>
-             </>
-           ) : (
-             <TouchableOpacity 
-               style={[styles.actionBtn, styles.primaryBtn]}
-               onPress={() => router.push('/rooms')}
-             >
-               <Text style={[styles.actionBtnText, { color: 'white' }]}>
-                 房间管理
-               </Text>
-             </TouchableOpacity>
-           )}
+          )}
         </View>
+        <TouchableOpacity style={styles.refreshBtn}>
+          <Text style={styles.refreshIcon}>🔄</Text>
+               </TouchableOpacity>
+        <TouchableOpacity style={styles.filterBtn} onPress={handleFilterPress}>
+          <Text style={styles.filterIcon}>☰</Text>
+             </TouchableOpacity>
       </View>
 
-      {/* 状态说明 */}
-      <View style={styles.legend}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.legendScrollView}>
-          <View style={styles.legendContent}>
-            {[
-              { status: 'available', label: '可预订', color: '#10b981' },
-              { status: 'occupied', label: '已入住', color: '#ef4444' },
-              { status: 'cleaning', label: '清洁中', color: '#f59e0b' },
-              { status: 'maintenance', label: '维修中', color: '#8b5cf6' },
-              { status: 'selected', label: '已选择', color: '#3b82f6' },
-            ].map(item => (
-              <View key={item.status} style={styles.legendItem}>
-                <View style={[styles.legendColor, { backgroundColor: item.color }]} />
-                <Text style={styles.legendText}>{item.label}</Text>
-              </View>
-            ))}
-          </View>
-        </ScrollView>
-        
-        {/* 日期选择器 */}
+      {/* 表格容器 */}
+      <View style={styles.tableContainer}>
+        {/* 固定的左上角日期选择器 */}
+        <View style={styles.fixedTopLeft}>
         <TouchableOpacity 
-          style={styles.dateSelector}
+            style={styles.todayCell}
           onPress={() => setDatePickerVisible(true)}
         >
-          <Text style={styles.dateSelectorText}>📅</Text>
+            <Text style={styles.todayLabel}>{formatSelectedDate(selectedDate)}</Text>
         </TouchableOpacity>
       </View>
 
-      {/* 分页控制 */}
-      <View style={styles.paginationContainer}>
-        <TouchableOpacity style={styles.paginationButton} onPress={handlePrevPage}>
-          <Text style={styles.paginationText}>‹ 前30天</Text>
-        </TouchableOpacity>
-        
-        <View style={styles.centerControls}>
-          <TouchableOpacity 
-            style={styles.todayButton} 
-            onPress={handleTodayPress}
-          >
-            <Text style={styles.todayButtonText}>今日</Text>
-          </TouchableOpacity>
-          <Text style={styles.currentPeriod}>
-            {displayDates[0]} 至 {displayDates[displayDates.length - 1]}
-          </Text>
-        </View>
-        
-        <TouchableOpacity style={styles.paginationButton} onPress={handleNextPage}>
-          <Text style={styles.paginationText}>后30天 ›</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* 日历网格 - 固定行列头布局 */}
-      <View style={styles.calendarContainer}>
-        {/* 顶部固定区域 */}
-        <View style={styles.fixedHeader}>
-          {/* 左上角固定单元格 */}
-          <View style={styles.cornerCell}>
-            <TouchableOpacity onPress={() => router.push('/rooms')}>
-              <Text style={styles.cornerText}>房间管理</Text>
-            </TouchableOpacity>
-          </View>
-          
-          {/* 日期头部滚动区域 */}
-          <View style={styles.dateHeaderContainer}>
+        {/* 固定的日期行（横向可滚动） */}
+        <View style={styles.fixedDateRow}>
             <ScrollView
-              ref={dateScrollViewRef}
+            ref={dateHeaderScrollRef}
               horizontal
               showsHorizontalScrollIndicator={false}
               scrollEventThrottle={16}
               onScroll={(event) => {
-                // 防止循环滚动
-                if (isScrollingSyncing.current) return
+                if (isScrollingProgrammatically.current) return
                 
-                // 同步主体表格的水平滚动
-                const scrollX = event.nativeEvent.contentOffset.x
-                isScrollingSyncing.current = true
+                const scrollXValue = event.nativeEvent.contentOffset.x
                 
-                if (statusScrollViewRef.current) {
-                  statusScrollViewRef.current.scrollTo({ x: scrollX, animated: false })
+                // 防止重复同步：只有当滚动距离超过1px才同步
+                if (Math.abs(scrollXValue - lastScrollX.current) < 1) return
+                
+                lastScrollX.current = scrollXValue
+                setScrollX(scrollXValue)
+                
+                // 判断是否在边界（真正到达尽头时才显示）
+                const maxScrollX = dates.length * CELL_WIDTH - (width - TODAY_CELL_WIDTH)
+                setShowLeftArrow(scrollXValue <= 5)
+                setShowRightArrow(scrollXValue >= maxScrollX - 5)
+                
+                // 同步到内容区域
+                isScrollingProgrammatically.current = true
+                contentScrollRef.current?.scrollTo({ x: scrollXValue, animated: false })
+                
+                // 清除之前的定时器
+                if (scrollSyncTimeout.current) {
+                  clearTimeout(scrollSyncTimeout.current)
                 }
                 
-                // 短暂延迟后重置同步标志
-                setTimeout(() => {
-                  isScrollingSyncing.current = false
+                // 短暂延迟后重置标志
+                scrollSyncTimeout.current = setTimeout(() => {
+                  isScrollingProgrammatically.current = false
                 }, 50)
               }}
             >
-              <View style={styles.dateHeaderContent}>
-                {displayDates.map((date, index) => {
-                  const dateObj = new Date(date)
-                  const month = dateObj.getMonth() + 1
-                  const day = dateObj.getDate()
-                  const weekDay = ['日', '一', '二', '三', '四', '五', '六'][dateObj.getDay()]
-                  const isTodayDate = isToday(date)
+            <View style={styles.dateRowContent}>
+              {dates.map((dateData, index) => {
+                const isCurrentDay = isToday(dateData.date)
+                const availableCount = getAvailableRooms(dateData, allRooms)
                   
                   return (
                     <View 
-                      key={date} 
+                    key={index} 
                       style={[
                         styles.dateCell, 
-                        { width: CELL_WIDTH },
-                        isTodayDate && styles.todayDateCell
+                      isCurrentDay && styles.todayDateCell
                       ]}
                     >
-                      <Text style={[styles.dateText, isTodayDate && styles.todayDateText]}>
-                        {month}/{day}
+                    <Text style={[styles.dateText, isCurrentDay && styles.todayDateText]}>
+                      {formatDate(dateData.date)} {getWeekDay(dateData.date)}
                       </Text>
-                      <Text style={[styles.weekDayText, isTodayDate && styles.todayDateText]}>
-                        {weekDay}
+                    <Text style={[styles.availableText, isCurrentDay && styles.todayAvailableText]}>
+                      剩{availableCount}间
                       </Text>
-                      {isTodayDate && <Text style={styles.todayLabel}>今日</Text>}
                     </View>
                   )
                 })}
               </View>
             </ScrollView>
-          </View>
         </View>
 
-        {/* 主体区域 */}
-        <View style={styles.mainContent}>
-          {/* 左侧房间列固定区域 */}
-          <View style={styles.roomsColumnContainer}>
-            <ScrollView
-              ref={roomsScrollViewRef}
-              showsVerticalScrollIndicator={false}
-              scrollEventThrottle={16}
-              onScroll={(event) => {
-                // 防止循环滚动
-                if (isScrollingSyncing.current) return
+        {/* 整体可滚动区域（上下滚动） */}
+        <ScrollView style={styles.mainScrollView}>
+          <View style={styles.tableContent}>
+            {/* 左侧房间列 */}
+            <View style={styles.leftColumn}>
+              {displayRoomTypes.map(roomType => {
+                const filteredRooms = getFilteredRooms(roomType)
+                if (filteredRooms.length === 0) return null
                 
-                // 同步主体表格的垂直滚动
-                const scrollY = event.nativeEvent.contentOffset.y
-                isScrollingSyncing.current = true
-                
-                if (statusScrollViewRef.current) {
-                  statusScrollViewRef.current.scrollTo({ y: scrollY, animated: false })
-                }
-                
-                // 短暂延迟后重置同步标志
-                setTimeout(() => {
-                  isScrollingSyncing.current = false
-                }, 50)
-              }}
-            >
-              <View style={styles.roomsColumnContent}>
-                {roomData.map((roomItem, roomIndex) => (
-                  <TouchableOpacity 
-                    key={roomItem.room.id}
-                    style={styles.roomHeaderFixed}
-                    onPress={() => handleRoomEdit(roomItem.room)}
-                  >
-                    <Text style={styles.roomName}>{roomItem.room.name}</Text>
-                    <Text style={styles.roomType}>{roomItem.room.type}</Text>
-                  </TouchableOpacity>
+                return (
+                  <View key={roomType}>
+                    {/* 房型标签 */}
+                    <View style={styles.roomTypeHeader}>
+                      <Text style={styles.roomTypeLabel}>{roomType}</Text>
+                    </View>
+                    
+                    {/* 该房型下的所有房间 */}
+                    {filteredRooms.map(room => (
+                      <View key={room.id} style={styles.roomCell}>
+                        <Text style={styles.roomName}>{room.name}</Text>
+                      </View>
                 ))}
               </View>
-            </ScrollView>
+                )
+              })}
           </View>
           
-          {/* 右侧状态表格滚动区域 */}
-          <View style={styles.statusTableContainer}>
-            {/* 外层垂直滚动 */}
+            {/* 右侧房态网格（横向可滚动） */}
             <ScrollView
-              ref={statusScrollViewRef}
-              showsVerticalScrollIndicator={false}
-              scrollEventThrottle={16}
-              onScroll={(event) => {
-                // 防止循环滚动
-                if (isScrollingSyncing.current) return
-                
-                // 同步房间列的垂直滚动
-                const scrollY = event.nativeEvent.contentOffset.y
-                isScrollingSyncing.current = true
-                
-                if (roomsScrollViewRef.current) {
-                  roomsScrollViewRef.current.scrollTo({ y: scrollY, animated: false })
-                }
-                
-                // 短暂延迟后重置同步标志
-                setTimeout(() => {
-                  isScrollingSyncing.current = false
-                }, 50)
-              }}
-            >
-              {/* 内层水平滚动 */}
-              <ScrollView
-                ref={horizontalScrollViewRef}
+              ref={contentScrollRef}
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                scrollEventThrottle={16}
-                onScroll={(event) => {
-                  // 防止循环滚动
-                  if (isScrollingSyncing.current) return
-                  
-                  // 同步日期头部的水平滚动
-                  const scrollX = event.nativeEvent.contentOffset.x
-                  isScrollingSyncing.current = true
-                  
-                  if (dateScrollViewRef.current) {
-                    dateScrollViewRef.current.scrollTo({ x: scrollX, animated: false })
-                  }
-                  
-                  // 短暂延迟后重置同步标志
-                  setTimeout(() => {
-                    isScrollingSyncing.current = false
+              scrollEventThrottle={16}
+              onScroll={(event) => {
+                if (isScrollingProgrammatically.current) return
+                
+                const scrollXValue = event.nativeEvent.contentOffset.x
+                
+                // 防止重复同步：只有当滚动距离超过1px才同步
+                if (Math.abs(scrollXValue - lastScrollX.current) < 1) return
+                
+                lastScrollX.current = scrollXValue
+                setScrollX(scrollXValue)
+                
+                // 判断是否在边界（真正到达尽头时才显示）
+                const maxScrollX = dates.length * CELL_WIDTH - (width - TODAY_CELL_WIDTH)
+                setShowLeftArrow(scrollXValue <= 5)
+                setShowRightArrow(scrollXValue >= maxScrollX - 5)
+                
+                // 同步到日期头部
+                isScrollingProgrammatically.current = true
+                dateHeaderScrollRef.current?.scrollTo({ x: scrollXValue, animated: false })
+                
+                // 清除之前的定时器
+                if (scrollSyncTimeout.current) {
+                  clearTimeout(scrollSyncTimeout.current)
+                }
+                
+                // 短暂延迟后重置标志
+                scrollSyncTimeout.current = setTimeout(() => {
+                  isScrollingProgrammatically.current = false
                   }, 50)
                 }}
               >
-                <View style={styles.statusTableContent}>
-                  {roomData.map((roomItem, roomIndex) => (
-                    <View key={roomItem.room.id} style={styles.statusRow}>
-                      {roomItem.dates.map((dateCell, dateIndex) => {
-                        const cellKey = `${roomItem.room.id}-${dateCell.date}`
-                        const isSelected = selectedCells.has(cellKey)
-                        const isTodayCell = isToday(dateCell.date)
+              <View style={styles.rightColumn}>
+                {displayRoomTypes.map(roomType => {
+                  const filteredRooms = getFilteredRooms(roomType)
+                  if (filteredRooms.length === 0) return null
+                  
+                  return (
+                    <View key={roomType}>
+                      {/* 房型标签行（占位） */}
+                      <View style={styles.roomTypePlaceholder} />
+                      
+                      {/* 该房型下的所有房间状态 */}
+                      {filteredRooms.map(room => (
+                        <View key={room.id} style={styles.roomStatusRow}>
+                          {dates.map((dateData, dateIndex) => {
+                            const isSelected = isCellSelected(room.id, dateIndex)
+                            // 从日期数据中获取房间状态
+                            const roomData = dateData.rooms[room.id]
+                            const isOccupied = roomData?.status === 'occupied'
+                            const isCurrentDay = isToday(dateData.date)
                         
                         return (
                           <TouchableOpacity
-                            key={dateCell.date}
+                                key={dateIndex}
                             style={[
                               styles.statusCell,
-                              { 
-                                width: CELL_WIDTH,
-                                backgroundColor: getStatusColor(dateCell.status, isSelected),
-                                opacity: isSelected ? 0.8 : 1,
-                              },
-                              isTodayCell && styles.todayStatusCell,
-                              isInSelectionMode && styles.selectionModeCell
-                            ]}
-                            onPress={() => handleCellPress(roomItem, dateCell)}
-                            onLongPress={() => handleCellLongPress(roomItem, dateCell)}
-                          >
-                            {dateCell.status === 'available' && dateCell.price && (
-                              <Text style={styles.priceText}>¥{dateCell.price}</Text>
-                            )}
-                            {dateCell.status === 'occupied' && dateCell.guestName && (
-                              <Text style={styles.guestText}>{dateCell.guestName}</Text>
-                            )}
-                            {isSelected && (
-                              <View style={styles.selectedOverlay}>
-                                <Text style={styles.selectedText}>✓</Text>
+                                  isSelected && styles.selectedCell,
+                                  isOccupied && styles.occupiedCell,
+                                  isCurrentDay && styles.todayStatusCell,
+                                ]}
+                                onPress={() => handleCellPress(room.id, dateIndex, roomData)}
+                              >
+                            {isOccupied && roomData && (
+                              <View style={styles.reservationInfo}>
+                                <Text style={styles.reservationGuestName} numberOfLines={1}>
+                                  {roomData.guestName}
+                                </Text>
+                                <Text style={styles.reservationChannel} numberOfLines={1}>
+                                  {roomData.channel}
+                                </Text>
                               </View>
                             )}
-                            {isTodayCell && (
-                              <View style={styles.todayIndicator} />
+                            {isSelected && (
+                                  <View style={styles.checkmarkContainer}>
+                                    <Text style={styles.checkmark}>✓</Text>
+                              </View>
                             )}
                           </TouchableOpacity>
                         )
                       })}
                     </View>
                   ))}
+                    </View>
+                  )
+                })}
                 </View>
               </ScrollView>
-            </ScrollView>
           </View>
-        </View>
+            </ScrollView>
       </View>
 
-       {/* 房间编辑弹窗 */}
-       <Modal
-         visible={roomEditModalVisible}
-         transparent
-         animationType="fade"
-         onRequestClose={() => setRoomEditModalVisible(false)}
-       >
-         <View style={styles.modalOverlay}>
-           <View style={styles.modalContent}>
-             <Text style={styles.modalTitle}>
-               {editingRoom ? '编辑房间' : '新增房间'}
-             </Text>
-             
-             <TextInput
-               style={styles.modalInput}
-               value={roomFormData.name}
-               onChangeText={(text) => setRoomFormData(prev => ({ ...prev, name: text }))}
-               placeholder="房间号码（如：A101）"
-             />
-             
-             <TextInput
-               style={styles.modalInput}
-               value={roomFormData.type}
-               onChangeText={(text) => setRoomFormData(prev => ({ ...prev, type: text }))}
-               placeholder="房间类型（如：标准间、豪华间）"
-             />
-             
-             <TextInput
-               style={styles.modalInput}
-               value={roomFormData.floor.toString()}
-               onChangeText={(text) => setRoomFormData(prev => ({ ...prev, floor: parseInt(text) || 1 }))}
-               placeholder="楼层"
-               keyboardType="numeric"
-             />
+      {/* 左侧加载更多按钮 */}
+      {showLeftArrow && (
+        <TouchableOpacity 
+          style={styles.leftArrow}
+          onPress={loadPreviousDays}
+        >
+          <Text style={styles.arrowText}>←</Text>
+        </TouchableOpacity>
+      )}
 
-             <View style={styles.modalButtons}>
-               {editingRoom && (
+      {/* 右侧加载更多按钮 */}
+      {showRightArrow && (
+        <TouchableOpacity 
+          style={styles.rightArrow}
+          onPress={loadNextDays}
+        >
+          <Text style={styles.arrowText}>→</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* 回到今日按钮 */}
+      {selectedCells.size === 0 && shouldShowTodayButton() && (
                  <TouchableOpacity
-                   style={[styles.modalButton, styles.deleteButton]}
-                   onPress={deleteRoom}
+          style={styles.todayButton}
+          onPress={handleBackToToday}
                  >
-                   <Text style={styles.deleteButtonText}>删除</Text>
+          <Text style={styles.todayButtonText}>回到今日</Text>
                  </TouchableOpacity>
                )}
+
+      {/* 底部操作栏 */}
+      {selectedCells.size > 0 && (
+        <View style={styles.bottomActions}>
+          <View style={styles.actionButtonsRow}>
                <TouchableOpacity
-                 style={[styles.modalButton, styles.cancelButton]}
-                 onPress={() => setRoomEditModalVisible(false)}
-               >
-                 <Text style={styles.cancelButtonText}>取消</Text>
+              style={styles.actionButton}
+              onPress={handleClearSelection}
+            >
+              <Text style={styles.actionButtonText}>取消</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionButton} onPress={() => {
+              Alert.alert('转脏房', '转脏房功能开发中')
+            }}>
+              <Text style={styles.actionButtonText}>转脏房</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionButton} onPress={() => {
+              // 获取第一个选中的房间
+              const firstCell = Array.from(selectedCells)[0]
+              if (firstCell) {
+                const [roomId] = firstCell.split('-')
+                router.push({
+                  pathname: '/close-room',
+                  params: { roomId, roomNumber: roomId }
+                })
+                setSelectedCells(new Set())
+              }
+            }}>
+              <Text style={styles.actionButtonText}>关房</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionButton} onPress={() => {
+              router.push('/create-order')
+              setSelectedCells(new Set())
+            }}>
+              <Text style={styles.actionButtonText}>入住</Text>
                </TouchableOpacity>
                <TouchableOpacity
-                 style={[styles.modalButton, styles.confirmButton]}
-                 onPress={saveRoomEdit}
+              style={[styles.actionButton, styles.primaryActionButton]}
+              onPress={() => router.push('/create-order')}
                >
-                 <Text style={styles.confirmButtonText}>保存</Text>
+              <Text style={[styles.actionButtonText, styles.primaryActionText]}>新增</Text>
                </TouchableOpacity>
              </View>
            </View>
-         </View>
-       </Modal>
+      )}
 
-       {/* 日历选择器 */}
-       <CalendarPicker
+      {/* 悬浮操作按钮 */}
+      {selectedCells.size === 0 && (
+        <TouchableOpacity 
+          style={styles.fabButton}
+          onPress={() => router.push('/create-order')}
+        >
+          <Text style={styles.fabIcon}>+</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* 日期选择器 */}
+      <DateWheelPicker
          visible={datePickerVisible}
          onClose={() => setDatePickerVisible(false)}
-         onSelectDate={handleDateSelect}
-         selectedDate={selectedStartDate}
-       />
+        onSelect={handleDateSelect}
+        initialDate={selectedDate.toISOString().split('T')[0]}
+        title="请选择日期"
+      />
+
+      {/* Android 筛选弹窗 */}
+      <Modal
+        visible={filterModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setFilterModalVisible(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setFilterModalVisible(false)}
+        >
+          <View style={styles.filterSheet}>
+            <Text style={styles.filterTitle}>筛选</Text>
+            
+            {['大床房', '双人房', '豪华房', '套房'].map(type => (
+                 <TouchableOpacity
+                key={type}
+                style={styles.filterOption}
+                onPress={() => {
+                  setSelectedRoomTypes(new Set([type as RoomType]))
+                  setFilterModalVisible(false)
+                }}
+              >
+                <Text style={styles.filterOptionText}>{type}</Text>
+                 </TouchableOpacity>
+            ))}
+            
+               <TouchableOpacity
+              style={styles.filterOption}
+              onPress={() => {
+                setSelectedRoomTypes(new Set())
+                setFilterModalVisible(false)
+              }}
+            >
+              <Text style={styles.filterOptionText}>全部房型</Text>
+               </TouchableOpacity>
+            
+               <TouchableOpacity
+              style={styles.filterCancelButton}
+              onPress={() => setFilterModalVisible(false)}
+               >
+              <Text style={styles.filterCancelText}>取消</Text>
+               </TouchableOpacity>
+             </View>
+        </TouchableOpacity>
+       </Modal>
      </View>
    )
  }
@@ -1110,540 +889,376 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f5f5f5',
   },
-  header: {
+  searchBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: 12,
     backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1e293b',
-  },
-  headerActions: {
-    flexDirection: 'row',
     gap: 8,
   },
-  actionBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-  },
-  primaryBtn: {
-    backgroundColor: '#6366f1',
-    borderColor: '#6366f1',
-  },
-  actionBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  legend: {
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  legendScrollView: {
+  searchInputContainer: {
     flex: 1,
-  },
-  legendContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingRight: 16,
-  },
-  dateSelector: {
-    backgroundColor: '#6366f1',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 20,
-    minWidth: 40,
-    alignItems: 'center',
   },
-  dateSelectorText: {
-    color: 'white',
+  searchIcon: {
     fontSize: 16,
-    fontWeight: '600',
+    marginRight: 8,
   },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginRight: 20,
-    paddingVertical: 4,
-  },
-  legendColor: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  legendText: {
-    fontSize: 13,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  calendarContainer: {
+  searchInput: {
     flex: 1,
-    marginTop: -10,
+    fontSize: 14,
+    color: '#333',
   },
-  calendarScrollView: {
+  clearIcon: {
+    fontSize: 16,
+    color: '#999',
+    paddingHorizontal: 4,
+  },
+  refreshBtn: {
+    padding: 8,
+  },
+  refreshIcon: {
+    fontSize: 20,
+  },
+  filterBtn: {
+    padding: 8,
+  },
+  filterIcon: {
+    fontSize: 20,
+  },
+  tableContainer: {
     flex: 1,
+    backgroundColor: 'white',
   },
-  calendarTable: {
-    flexDirection: 'column',
+  fixedTopLeft: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    zIndex: 3,
+    backgroundColor: 'white',
   },
-  dateHeaderRow: {
-    flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  roomDataRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  fixedHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  dateHeaderContainer: {
-    flex: 1,
-  },
-  dateHeaderContent: {
-    flexDirection: 'row',
-  },
-  mainContent: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  roomsColumnContainer: {
-    width: ROOM_HEADER_WIDTH,
-    backgroundColor: '#f8fafc',
-    borderRightWidth: 1,
-    borderRightColor: '#e2e8f0',
-  },
-  roomsColumnContent: {
-    flexDirection: 'column',
-  },
-  roomHeaderFixed: {
-    width: ROOM_HEADER_WIDTH,
-    height: CELL_HEIGHT,
+  todayCell: {
+    width: TODAY_CELL_WIDTH,
+    height: 60,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    backgroundColor: '#f8fafc',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  statusTableContainer: {
-    flex: 1,
-  },
-  statusTableContent: {
-    flexDirection: 'column',
-  },
-  dateHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  cornerCell: {
-    width: ROOM_HEADER_WIDTH,
-    height: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#4a90e2',
     borderRightWidth: 1,
-    borderRightColor: '#e2e8f0',
-    backgroundColor: '#e2e8f0',
+    borderRightColor: '#d0d0d0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#d0d0d0',
   },
-  cornerText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#374151',
-    textAlign: 'center',
+  todayLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: 'white',
   },
-  dateScrollView: {
-    flex: 1,
+  fixedDateRow: {
+    position: 'absolute',
+    top: 0,
+    left: TODAY_CELL_WIDTH,
+    right: 0,
+    height: 60,
+    zIndex: 2,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#d0d0d0',
+  },
+  dateRowContent: {
+    flexDirection: 'row',
   },
   dateCell: {
-    height: 50,
+    width: CELL_WIDTH,
+    height: 60,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     justifyContent: 'center',
     alignItems: 'center',
     borderRightWidth: 1,
-    borderRightColor: '#e2e8f0',
+    borderRightColor: '#e0e0e0',
+  },
+  todayDateCell: {
+    backgroundColor: '#e3f2fd',
   },
   dateText: {
     fontSize: 12,
+    color: '#333',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  todayDateText: {
+    color: '#1976d2',
+    fontWeight: 'bold',
+  },
+  availableText: {
+    fontSize: 11,
+    color: '#666',
+  },
+  todayAvailableText: {
+    color: '#1976d2',
     fontWeight: '600',
-    color: '#374151',
   },
-  weekDayText: {
-    fontSize: 10,
-    color: '#6b7280',
-    marginTop: 2,
-  },
-  roomsContainer: {
+  mainScrollView: {
     flex: 1,
+    marginTop: 60,
   },
-  roomsScrollView: {
-    flex: 1,
-  },
-  roomRow: {
+  tableContent: {
     flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
   },
-  roomHeader: {
-    width: ROOM_HEADER_WIDTH,
-    height: CELL_HEIGHT,
+  leftColumn: {
+    width: TODAY_CELL_WIDTH,
+    backgroundColor: 'white',
+  },
+  roomTypeHeader: {
+    height: 32,
+    backgroundColor: '#e0e0e0',
     justifyContent: 'center',
     paddingHorizontal: 8,
-    backgroundColor: '#f8fafc',
     borderRightWidth: 1,
-    borderRightColor: '#e2e8f0',
+    borderRightColor: '#d0d0d0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#d0d0d0',
+  },
+  roomTypeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+  },
+  roomCell: {
+    height: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRightWidth: 1,
+    borderRightColor: '#d0d0d0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    backgroundColor: 'white',
   },
   roomName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1e293b',
+    color: '#333',
   },
-  roomType: {
-    fontSize: 10,
-    color: '#64748b',
-    marginTop: 2,
+  rightColumn: {
+    backgroundColor: 'white',
+  },
+  roomTypePlaceholder: {
+    height: 32,
+    backgroundColor: '#e0e0e0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#d0d0d0',
+  },
+  roomStatusRow: {
+    flexDirection: 'row',
+    height: 60,
   },
   statusCell: {
-    height: CELL_HEIGHT,
+    width: CELL_WIDTH,
+    height: 60,
     justifyContent: 'center',
     alignItems: 'center',
     borderRightWidth: 1,
-    borderRightColor: '#e2e8f0',
-    position: 'relative',
+    borderRightColor: '#e0e0e0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    backgroundColor: 'white',
   },
-  priceText: {
+  selectedCell: {
+    backgroundColor: '#c8e3ff',
+  },
+  occupiedCell: {
+    backgroundColor: '#ffe0b2',
+  },
+  todayStatusCell: {
+    borderLeftWidth: 2,
+    borderLeftColor: '#1976d2',
+  },
+  reservationInfo: {
+    flex: 1,
+    width: '100%',
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    justifyContent: 'center',
+  },
+  reservationGuestName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  reservationChannel: {
     fontSize: 10,
-    color: 'white',
+    color: '#666',
+    marginBottom: 2,
+  },
+  checkmarkContainer: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+  },
+  checkmark: {
+    fontSize: 16,
+    color: '#4a90e2',
+    fontWeight: 'bold',
+  },
+  todayButton: {
+    position: 'absolute',
+    bottom: 30, // 降低位置，更靠近底部
+    alignSelf: 'center',
+    backgroundColor: 'white',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  todayButtonText: {
+    fontSize: 14,
+    color: '#4a90e2',
     fontWeight: '600',
   },
-  guestText: {
-    fontSize: 9,
-    color: 'white',
-    fontWeight: '500',
-    textAlign: 'center',
+  bottomActions: {
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    paddingBottom: 24,
   },
-  selectedOverlay: {
+  actionButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  actionButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    alignItems: 'center',
+    backgroundColor: 'white',
+  },
+  actionButtonText: {
+    fontSize: 13,
+    color: '#333',
+    fontWeight: '500',
+  },
+  primaryActionButton: {
+    backgroundColor: '#4a90e2',
+    borderColor: '#4a90e2',
+  },
+  primaryActionText: {
+    color: 'white',
+  },
+  leftArrow: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(59, 130, 246, 0.3)',
+    left: 8,
+    top: '50%',
+    marginTop: -20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(74, 144, 226, 0.9)',
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
-  selectedText: {
+  rightArrow: {
+    position: 'absolute',
+    right: 8,
+    top: '50%',
+    marginTop: -20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(74, 144, 226, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  arrowText: {
+    fontSize: 24,
     color: 'white',
-    fontSize: 16,
     fontWeight: 'bold',
+  },
+  fabButton: {
+    position: 'absolute',
+    right: 20,
+    bottom: 30, // 降低位置，更靠近底部
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#4a90e2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  fabIcon: {
+    fontSize: 32,
+    color: 'white',
+    fontWeight: '300',
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'flex-end',
   },
-  modalContent: {
+  filterSheet: {
     backgroundColor: 'white',
-    margin: 20,
-    borderRadius: 12,
-    padding: 24,
-    width: '90%',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingBottom: 20,
   },
-  modalTitle: {
+  filterTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#1e293b',
-    marginBottom: 20,
+    color: '#333',
+    textAlign: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  filterOption: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  filterOptionText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  filterCancelButton: {
+    marginTop: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  filterCancelText: {
+    fontSize: 16,
+    color: '#999',
     textAlign: 'center',
   },
-  modalInput: {
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    marginBottom: 16,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 20,
-    gap: 8,
-  },
-  modalButton: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  deleteButton: {
-    backgroundColor: '#ef4444',
-  },
-  cancelButton: {
-    backgroundColor: '#f1f5f9',
-  },
-  confirmButton: {
-    backgroundColor: '#6366f1',
-  },
-  deleteButtonText: {
-    color: 'white',
-    fontWeight: '600',
-  },
-  cancelButtonText: {
-    color: '#64748b',
-    fontWeight: '600',
-  },
-  confirmButtonText: {
-    color: 'white',
-    fontWeight: '600',
-  },
-
-  // 日历选择器样式
-  calendarModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  calendarModalContent: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 20,
-    width: width * 0.9,
-    maxHeight: height * 0.7,
-  },
-  calendarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  calendarNavButton: {
-    fontSize: 24,
-    color: '#6366f1',
-    fontWeight: 'bold',
-    padding: 8,
-  },
-  calendarTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1e293b',
-  },
-  weekHeader: {
-    flexDirection: 'row',
-    marginBottom: 10,
-  },
-  weekDay: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 14,
-    color: '#64748b',
-    fontWeight: '600',
-  },
-  daysGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  dayCell: {
-    width: '14.28%',
-    aspectRatio: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 8,
-    marginBottom: 5,
-  },
-  selectedDay: {
-    backgroundColor: '#6366f1',
-  },
-  todayDay: {
-    backgroundColor: '#fbbf24',
-  },
-  dayText: {
-    fontSize: 16,
-    color: '#1e293b',
-  },
-  otherMonthDay: {
-    color: '#cbd5e1',
-  },
-  selectedDayText: {
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  todayDayText: {
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  calendarButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 20,
-    gap: 12,
-  },
-  calendarButton: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  calendarConfirmButton: {
-    backgroundColor: '#6366f1',
-    borderColor: '#6366f1',
-  },
-  calendarButtonText: {
-    fontSize: 16,
-    color: '#64748b',
-    fontWeight: '600',
-  },
-  calendarConfirmText: {
-    color: 'white',
-  },
-  // 分页控制样式
-  paginationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  centerControls: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 8,
-  },
-  todayButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#6366f1',
-  },
-  todayButtonText: {
-    fontSize: 12,
-    color: 'white',
-    fontWeight: '600',
-  },
-  paginationButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#f1f5f9',
-  },
-  paginationText: {
-    fontSize: 12,
-    color: '#6366f1',
-    fontWeight: '600',
-  },
-  currentPeriod: {
-    fontSize: 12,
-    color: '#64748b',
-    fontWeight: '500',
-  },
-  // 重新设计的日历容器
-  calendarContent: {
-    flexDirection: 'row',
-    flex: 1,
-  },
-  fixedRoomColumn: {
-    width: ROOM_HEADER_WIDTH,
-    backgroundColor: '#f8fafc',
-    borderRightWidth: 2,
-    borderRightColor: '#e2e8f0',
-  },
-  roomListScrollView: {
-    flex: 1,
-  },
-  roomListContent: {
-    flexGrow: 1,
-  },
-  scrollableArea: {
-    flex: 1,
-  },
-  dateHeaderScrollable: {
-    flexDirection: 'row',
-    height: 60,
-  },
-  dateCellScrollable: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRightWidth: 1,
-    borderRightColor: '#e2e8f0',
-    position: 'relative',
-  },
-  todayDateCell: {
-    backgroundColor: '#fef3c7',
-  },
-  todayDateText: {
-    color: '#d97706',
-    fontWeight: 'bold',
-  },
-  todayLabel: {
-    fontSize: 8,
-    color: '#d97706',
-    fontWeight: 'bold',
-    position: 'absolute',
-    bottom: 2,
-  },
-  roomRowScrollable: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  todayStatusCell: {
-    borderWidth: 2,
-    borderColor: '#f59e0b',
-  },
-  todayIndicator: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#f59e0b',
-  },
-  statusScrollContainer: {
-    flex: 1,
-  },
-  statusScrollContent: {
-    flexGrow: 1,
-  },
-  statusGridContainer: {
-    // 确保状态网格没有额外空白
-  },
-  statusRow: {
-    flexDirection: 'row',
-  },
-  selectionModeCell: {
-    borderWidth: 2,
-    borderColor: '#3b82f6',
-    borderStyle: 'dashed',
-  },
-}) 
+})

@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // 转译 monorepo 包
+  transpilePackages: ['@roomease/ui', '@roomease/shared', '@roomease/api-client'],
   // 环境变量配置
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001',

@@ -5,6 +5,7 @@
   "compilerOptions": {
     "deleteOutDir": true,
     "watchAssets": true,
-    "assets": ["**/*.gql"]
+    "assets": ["**/*.gql"],
+    "webpackConfigPath": "webpack.config.js"
   }
 } 

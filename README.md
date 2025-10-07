@@ -2,39 +2,46 @@
 
 > 现代化的多平台酒店民宿管理解决方案，支持 Web、移动端和微信小程序
 
+**作者**: 朱驰宇 (zhu.cy@outlook.com)  
+**版本**: 1.0.0  
+**许可证**: MIT
+
 ## 🏗️ 技术架构
 
 ### 前端技术栈
-- **Web端**: Next.js 14 + React 18 + TypeScript + Tailwind CSS
-- **移动端**: Expo SDK 51 + React Native + TypeScript
-- **微信小程序**: Taro 4 + React + TypeScript
+- **Web端**: Next.js 14 + React 18 + TypeScript + Tailwind CSS + Recharts
+- **移动端**: Expo SDK 54 + React Native 0.81 + TypeScript + Redux Toolkit
+- **微信小程序**: Taro 4 + React 18 + TypeScript + Sass
 
 ### 后端技术栈
-- **API网关**: NestJS + GraphQL + REST + WebSocket
-- **数据库**: PostgreSQL + Prisma ORM
-- **缓存**: Redis
+- **API网关**: NestJS 10 + GraphQL + REST + WebSocket + JWT认证
+- **数据库**: PostgreSQL + Prisma 5.7 ORM
+- **缓存**: Redis 4.6
 - **消息队列**: RabbitMQ
 - **分析数据**: ClickHouse
 - **对象存储**: MinIO (S3兼容)
 
 ### 项目管理
-- **Monorepo**: pnpm workspaces + Turborepo
+- **Monorepo**: pnpm 8.15.0 workspaces + Turborepo 1.10.0
 - **容器化**: Docker + Docker Compose
 - **部署**: Kubernetes + Helm
 - **CI/CD**: GitHub Actions
 - **监控**: Prometheus + Grafana
+- **包管理**: pnpm overrides (React 19.1.0)
 
 ## 🚀 快速开始
 
 ### 环境要求
 - Node.js >= 16
-- pnpm >= 8
+- pnpm 8.15.0
 - Docker Desktop (可选)
+- Expo CLI (移动端开发)
+- Taro CLI (小程序开发)
 
 ### 1. 克隆项目
 ```bash
 git clone <your-repo-url>
-cd HotelManage
+cd RoomEase
 ```
 
 ### 2. 安装依赖
@@ -80,6 +87,7 @@ docker compose up -d
 ### 应用服务
 - 🌐 **Web端**: http://localhost:3000
 - 📱 **移动端**: http://localhost:8081 (Expo DevTools)
+- 📱 **小程序**: 微信开发者工具
 - ⚡ **API文档**: http://localhost:3001/api
 
 ### 基础服务
@@ -116,20 +124,21 @@ pnpm prisma generate
 ## 📦 项目结构
 
 ```
-HotelManage/
+RoomEase/
 ├── apps/                    # 应用
 │   ├── web/                # Next.js Web端
 │   ├── mobile/             # Expo 移动端
 │   └── miniprogram/        # Taro 微信小程序
 ├── packages/               # 共享包
 │   ├── shared/             # 共享类型和工具
-│   ├── database/           # 数据库层
+│   ├── database/           # 数据库层 (Prisma)
 │   ├── ui/                 # UI组件库
 │   └── api-client/         # API客户端
 ├── services/               # 后端服务
 │   └── api-gateway/        # NestJS API网关
 ├── helm/                   # Kubernetes部署
-├── .github/                # CI/CD工作流
+├── monitoring/             # 监控配置
+├── scripts/                # 数据库初始化脚本
 ├── docker-compose.yml      # 本地开发环境
 └── start-dev.sh           # 开发环境启动脚本
 ```
@@ -192,16 +201,19 @@ helm upgrade roomease ./helm/roomease
 - 💰 收入分析报表
 
 ### 移动端
-- 📱 原生移动体验
-- 🔔 推送通知
-- 📷 拍照功能
-- 📍 离线支持
+- 📱 原生移动体验 (Expo SDK 54)
+- 🔔 推送通知 (Expo Notifications)
+- 📷 拍照功能 (Expo Camera)
+- 📍 离线支持 (AsyncStorage)
+- 📊 数据可视化 (React Native Chart Kit)
+- 🔄 状态管理 (Redux Toolkit)
 
 ### 微信小程序
 - 🔐 微信授权登录
 - 💰 微信支付集成
 - 🔔 消息订阅
 - 📤 分享功能
+- 🎨 现代化UI (Taro 4 + Sass)
 
 ## 🤝 贡献指南
 
@@ -225,4 +237,5 @@ helm upgrade roomease ./helm/roomease
 
 ---
 
+**作者**: 朱驰宇 (zhu.cy@outlook.com)  
 **RoomEase Team** - 让酒店管理更简单！ 🏨✨ 

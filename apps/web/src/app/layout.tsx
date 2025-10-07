@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 
@@ -9,14 +9,18 @@ export const metadata: Metadata = {
   description: '让民宿房态一屏掌控，订价渠道自动同步，经营数据随手可得',
   keywords: ['酒店管理', '民宿管理', '房态管理', '预订系统'],
   authors: [{ name: 'RoomEase Team' }],
-  viewport: 'width=device-width, initial-scale=1',
-  themeColor: '#000000',
   manifest: '/manifest.json',
   icons: {
     icon: '/favicon.ico',
     shortcut: '/favicon-16x16.png',
     apple: '/apple-touch-icon.png',
   },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#000000',
 }
 
 export default function RootLayout({

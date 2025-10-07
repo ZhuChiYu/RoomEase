@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "RoomEase",
+    "name": "RoomEase Mobile",
     "slug": "roomease-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
@@ -16,8 +16,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.roomease.mobile",
-      "buildNumber": "1"
+      "bundleIdentifier": "com.roomease.mobile"
     },
     "android": {
       "adaptiveIcon": {
@@ -25,7 +24,6 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.roomease.mobile",
-      "versionCode": 1,
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
@@ -38,18 +36,13 @@
     "plugins": [
       "expo-router",
       [
-        "expo-camera",
+        "expo-notifications",
         {
-          "cameraPermission": "Allow RoomEase to access your camera to take photos for ID recognition."
+          "icon": "./assets/notification-icon.png",
+          "color": "#6366f1",
+          "sounds": ["./assets/notification-sound.wav"]
         }
-      ],
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "Allow RoomEase to access your photos to upload room images."
-        }
-      ],
-      "expo-font"
+      ]
     ],
     "scheme": "roomease",
     "extra": {
@@ -57,8 +50,9 @@
         "origin": false
       },
       "eas": {
-        "projectId": "your-expo-project-id"
-      }
+        "projectId": "your-project-id"
+      },
+      "apiUrl": "http://localhost:3000"
     }
   }
 }

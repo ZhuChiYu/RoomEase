@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { DateWheelPicker } from '../components/DateWheelPicker'
+import { useAppSelector } from '../store/hooks'
 
 const { width } = Dimensions.get('window')
 
@@ -87,6 +88,61 @@ function ReservationItem({ guestName, room, checkIn, status, onPress }: Reservat
 export default function HomeScreen() {
   const router = useRouter()
   
+  // 从Redux获取数据
+  const reservations = useAppSelector(state => state.calendar.reservations)
+  const rooms = useAppSelector(state => state.calendar.rooms)
+  const roomStatuses = useAppSelector(state => state.calendar.roomStatuses)
+  
+  // 计算今日数据
+  const todayData = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0]
+    
+    // 今日入住
+    const todayCheckIn = reservations.filter(r => r.checkInDate === today && r.status !== 'cancelled').length
+    
+    // 今日退房
+    const todayCheckOut = reservations.filter(r => r.checkOutDate === today && r.status !== 'cancelled').length
+    
+    // 当前在住
+    const currentOccupied = reservations.filter(r => {
+      return r.checkInDate <= today && r.checkOutDate > today && r.status !== 'cancelled'
+    }).length
+    
+    // 入住率
+    const occupancyRate = rooms.length > 0 ? ((currentOccupied / rooms.length) * 100).toFixed(0) : 0
+    
+    // 本月收入
+    const currentMonth = new Date().getMonth() + 1
+    const currentYear = new Date().getFullYear()
+    const monthlyRevenue = reservations.filter(r => {
+      const checkInDate = new Date(r.checkInDate)
+      return checkInDate.getMonth() + 1 === currentMonth && checkInDate.getFullYear() === currentYear
+    }).reduce((sum, r) => sum + (r.totalAmount || 0), 0)
+    
+    return {
+      todayCheckIn,
+      todayCheckOut,
+      currentOccupied,
+      occupancyRate,
+      monthlyRevenue,
+    }
+  }, [reservations, rooms])
+  
+  // 今日及最近的预订（显示今日的预订）
+  const recentReservations = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0]
+    return reservations
+      .filter(r => r.checkInDate === today && r.status !== 'cancelled')
+      .slice(0, 3)
+      .map(r => ({
+        id: r.id,
+        guestName: r.guestName,
+        room: r.roomNumber,
+        checkIn: r.checkInDate,
+        status: r.status === 'confirmed' ? 'confirmed' as const : 'pending' as const,
+      }))
+  }, [reservations])
+  
   // 新建预订弹窗状态
   const [bookingModalVisible, setBookingModalVisible] = useState(false)
   const [bookingFormData, setBookingFormData] = useState({
@@ -129,52 +185,27 @@ export default function HomeScreen() {
   const kpiData = [
     {
       title: '今日入住',
-      value: 12,
-      description: '计划入住 15 间',
-      trend: { value: 8.2, isPositive: true },
+      value: todayData.todayCheckIn,
+      description: `共${todayData.todayCheckIn}间`,
       color: '#3b82f6'
     },
     {
       title: '今日退房',
-      value: 8,
-      description: '计划退房 10 间',
-      trend: { value: -2.1, isPositive: false },
+      value: todayData.todayCheckOut,
+      description: `共${todayData.todayCheckOut}间`,
       color: '#ef4444'
     },
     {
       title: '当前在住',
-      value: 45,
-      description: '入住率 78%',
-      trend: { value: 12.5, isPositive: true },
+      value: todayData.currentOccupied,
+      description: `入住率 ${todayData.occupancyRate}%`,
       color: '#10b981'
     },
     {
       title: '本月收入',
-      value: '¥156,847',
-      description: '较上月增长',
-      trend: { value: 15.3, isPositive: true },
+      value: `¥${todayData.monthlyRevenue.toFixed(2)}`,
+      description: `共${rooms.length}间房`,
       color: '#8b5cf6'
-    }
-  ]
-
-  const recentReservations = [
-    {
-      guestName: '张三',
-      room: 'A101',
-      checkIn: '2024-01-15',
-      status: 'confirmed' as const
-    },
-    {
-      guestName: '李四',
-      room: 'A102',
-      checkIn: '2024-01-15',
-      status: 'pending' as const
-    },
-    {
-      guestName: '王五',
-      room: 'B201',
-      checkIn: '2024-01-16',
-      status: 'confirmed' as const
     }
   ]
 
@@ -366,6 +397,12 @@ export default function HomeScreen() {
             >
               <Text style={styles.actionText}>客人退房</Text>
             </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.actionButton}
+              onPress={() => router.push('/room-type-settings')}
+            >
+              <Text style={styles.actionText}>房型设置</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -373,7 +410,7 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>最近预订</Text>
-            <TouchableOpacity onPress={() => router.push('/reservations')}>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/reservations')}>
               <Text style={styles.seeAllText}>查看全部</Text>
             </TouchableOpacity>
           </View>

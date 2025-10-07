@@ -2,7 +2,7 @@
   "name": "@roomease/api-gateway",
   "version": "1.0.0",
   "description": "RoomEase API Gateway - 认证、路由、GraphQL",
-  "main": "dist/main.js",
+  "main": "dist/services/api-gateway/src/main.js",
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
@@ -10,7 +10,7 @@
     "dev": "nest start --watch",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/services/api-gateway/src/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",

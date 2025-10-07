@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { DateWheelPicker } from '../components/DateWheelPicker'
+import { useAppSelector } from '../store/hooks'
 
 interface Reservation {
   id: string
@@ -131,69 +132,79 @@ export default function ReservationsScreen() {
   const [datePickerVisible, setDatePickerVisible] = useState(false)
   const [datePickerType, setDatePickerType] = useState<'checkIn' | 'checkOut'>('checkIn')
 
+  const [startDateFilter, setStartDateFilter] = useState('')
+  const [endDateFilter, setEndDateFilter] = useState('')
+  const [sortBy, setSortBy] = useState<'date' | 'amount'>('date')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+
   const filters = [
     { id: 'all', name: '全部' },
     { id: 'pending', name: '待确认' },
     { id: 'confirmed', name: '已确认' },
-    { id: 'checked_in', name: '已入住' },
+    { id: 'checked-in', name: '已入住' },
+    { id: 'checked-out', name: '已退房' },
+    { id: 'cancelled', name: '已取消' },
     { id: 'today', name: '今日' },
   ]
 
-  // 模拟预订数据
-  const reservations: Reservation[] = [
-    {
-      id: 'RES001',
-      guestName: '张三',
-      room: 'A101 - 豪华大床房',
-      checkIn: '2024-01-15',
-      checkOut: '2024-01-17',
-      status: 'confirmed',
-      totalAmount: 1200,
-      guestPhone: '13812345678'
-    },
-    {
-      id: 'RES002',
-      guestName: '李四',
-      room: 'A102 - 标准双人房',
-      checkIn: '2024-01-15',
-      checkOut: '2024-01-16',
-      status: 'pending',
-      totalAmount: 800,
-      guestPhone: '13987654321'
-    },
-    {
-      id: 'RES003',
-      guestName: '王五',
-      room: 'B201 - 家庭套房',
-      checkIn: '2024-01-14',
-      checkOut: '2024-01-18',
-      status: 'checked_in',
-      totalAmount: 2400,
-      guestPhone: '13611223344'
-    },
-    {
-      id: 'RES004',
-      guestName: '赵六',
-      room: 'A103 - 标准双人房',
-      checkIn: '2024-01-12',
-      checkOut: '2024-01-14',
-      status: 'checked_out',
-      totalAmount: 600,
-      guestPhone: '13755667788'
-    }
-  ]
+  // 从Redux获取真实预订数据
+  const reduxReservations = useAppSelector(state => state.calendar.reservations)
+  
+  console.log('📋 [Reservations] Redux预订数据:', reduxReservations)
+  
+  // 转换为页面所需的格式
+  const reservations: Reservation[] = reduxReservations.map(r => ({
+    id: r.id,
+    guestName: r.guestName,
+    room: `${r.roomNumber} - ${r.roomType}`,
+    checkIn: r.checkInDate,
+    checkOut: r.checkOutDate,
+    status: r.status === 'confirmed' ? 'confirmed' : 
+            r.status === 'checked-in' ? 'checked_in' :
+            r.status === 'checked-out' ? 'checked_out' : 'pending',
+    totalAmount: r.totalAmount,
+    guestPhone: r.guestPhone
+  }))
 
-  const filteredReservations = reservations.filter(reservation => {
-    const matchesSearch = reservation.guestName.toLowerCase().includes(searchText.toLowerCase()) ||
-                         reservation.room.toLowerCase().includes(searchText.toLowerCase()) ||
-                         reservation.id.toLowerCase().includes(searchText.toLowerCase())
-    
-    const matchesFilter = selectedFilter === 'all' || 
-                         reservation.status === selectedFilter ||
-                         (selectedFilter === 'today' && reservation.checkIn === '2024-01-15')
-    
-    return matchesSearch && matchesFilter
-  })
+  const filteredReservations = useMemo(() => {
+    let filtered = reservations.filter(reservation => {
+      // 搜索过滤
+      const matchesSearch = searchText === '' || 
+        reservation.guestName.toLowerCase().includes(searchText.toLowerCase()) ||
+        reservation.room.toLowerCase().includes(searchText.toLowerCase()) ||
+        reservation.id.toLowerCase().includes(searchText.toLowerCase()) ||
+        reservation.guestPhone.includes(searchText)
+      
+      // 状态过滤
+      const matchesFilter = selectedFilter === 'all' || 
+                           reservation.status === selectedFilter ||
+                           (selectedFilter === 'today' && reservation.checkIn === new Date().toISOString().split('T')[0])
+      
+      // 日期范围过滤
+      let matchesDateRange = true
+      if (startDateFilter) {
+        matchesDateRange = matchesDateRange && reservation.checkIn >= startDateFilter
+      }
+      if (endDateFilter) {
+        matchesDateRange = matchesDateRange && reservation.checkOut <= endDateFilter
+      }
+      
+      return matchesSearch && matchesFilter && matchesDateRange
+    })
+
+    // 排序
+    filtered.sort((a, b) => {
+      if (sortBy === 'date') {
+        const comparison = a.checkIn.localeCompare(b.checkIn)
+        return sortOrder === 'asc' ? comparison : -comparison
+      } else {
+        const comparison = a.totalAmount - b.totalAmount
+        return sortOrder === 'asc' ? comparison : -comparison
+      }
+    })
+
+    return filtered
+  }, [reservations, searchText, selectedFilter, startDateFilter, endDateFilter, sortBy, sortOrder])
 
   const handleReservationPress = (id: string) => {
     router.push(`/booking-details?id=${id}`)
@@ -275,6 +286,31 @@ export default function ReservationsScreen() {
             </TouchableOpacity>
           ))}
         </ScrollView>
+      </View>
+
+      {/* 高级筛选和排序 */}
+      <View style={styles.advancedFilters}>
+        <View style={styles.advancedFiltersRow}>
+          <TouchableOpacity 
+            style={styles.sortButton}
+            onPress={() => setSortBy(sortBy === 'date' ? 'amount' : 'date')}
+          >
+            <Text style={styles.sortButtonText}>
+              {sortBy === 'date' ? '按日期' : '按金额'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.sortButton}
+            onPress={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+          >
+            <Text style={styles.sortButtonText}>
+              {sortOrder === 'asc' ? '升序 ↑' : '降序 ↓'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.resultCount}>
+          共 {filteredReservations.length} 条结果
+        </Text>
       </View>
 
       {/* 预订列表 */}
@@ -609,5 +645,34 @@ const styles = StyleSheet.create({
   dateButtonText: {
     fontSize: 16,
     color: '#374151',
+  },
+  advancedFilters: {
+    backgroundColor: 'white',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  advancedFiltersRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    gap: 12,
+    marginBottom: 8,
+  },
+  sortButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 8,
+  },
+  sortButtonText: {
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  resultCount: {
+    fontSize: 12,
+    color: '#9ca3af',
+    textAlign: 'center',
   },
 }) 

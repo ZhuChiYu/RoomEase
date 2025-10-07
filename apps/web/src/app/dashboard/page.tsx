@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@roomease/ui'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Button } from '@roomease/ui'
 
 interface KPICardProps {
   title: string
@@ -94,9 +94,9 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between space-y-2">
         <h2 className="text-3xl font-bold tracking-tight">仪表盘</h2>
         <div className="flex items-center space-x-2">
-          <button className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
+          <Button variant="outline">
             导出报表
-          </button>
+          </Button>
         </div>
       </div>
 
