@@ -11,16 +11,20 @@ import {
   StatusBar,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useAppDispatch } from './store/hooks';
+import { addRoomsToType } from './store/calendarSlice';
 
 export default function AddRoomsScreen() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const params = useLocalSearchParams();
   
+  const roomTypeName = params.roomTypeName as string;
   const existingRooms = params.existingRooms 
     ? JSON.parse(params.existingRooms as string) 
     : [];
   
-  const [newRooms, setNewRooms] = useState<string[]>(['']);
+  const [newRooms, setNewRooms] = useState<string[]>([]);
   const [currentInput, setCurrentInput] = useState('');
 
   const handleAddAnother = () => {
@@ -41,8 +45,8 @@ export default function AddRoomsScreen() {
 
   const handleComplete = () => {
     const allNewRooms = currentInput.trim() 
-      ? [...newRooms.filter(r => r), currentInput.trim()]
-      : newRooms.filter(r => r);
+      ? [...newRooms, currentInput.trim()]
+      : newRooms;
     
     if (allNewRooms.length === 0) {
       Alert.alert('提示', '请至少添加一个房间');
@@ -56,9 +60,35 @@ export default function AddRoomsScreen() {
       return;
     }
     
-    // 返回上一页并传递新房间列表
-    // 实际应用中应该使用全局状态管理
-    router.back();
+    // 注意：这里只是将房间名传回上一页，不直接保存到Redux
+    // 真正的保存会在上一页点击"完成"时进行
+    console.log('📝 [AddRooms] 返回房间列表:', allNewRooms);
+    
+    Alert.alert('成功', `已添加 ${allNewRooms.length} 个房间`, [
+      {
+        text: '确定',
+        onPress: () => {
+          // 返回到上一页并传递房间数据
+          const returnTo = params.returnTo || 'edit-room-type';
+          const sessionId = params.sessionId;
+          
+          console.log('✅ [AddRooms] 返回并传递参数:', {
+            returnTo,
+            sessionId,
+            roomsCount: allNewRooms.length
+          });
+          
+          router.replace({
+            pathname: `/${returnTo}`,
+            params: {
+              ...params,
+              newRooms: JSON.stringify(allNewRooms),
+              _timestamp: Date.now().toString(), // 添加时间戳确保参数更新
+            }
+          });
+        },
+      },
+    ]);
   };
 
   return (
@@ -75,6 +105,13 @@ export default function AddRoomsScreen() {
       </View>
 
       <ScrollView style={styles.content}>
+        {/* 房型提示 */}
+        {roomTypeName && (
+          <View style={styles.tipContainer}>
+            <Text style={styles.tipText}>正在为「{roomTypeName}」添加房间</Text>
+          </View>
+        )}
+
         {/* 输入框 */}
         <View style={styles.inputSection}>
           <TextInput
@@ -94,10 +131,10 @@ export default function AddRoomsScreen() {
         </TouchableOpacity>
 
         {/* 已添加的房间列表 */}
-        {newRooms.filter(r => r).length > 0 && (
+        {newRooms.length > 0 && (
           <View style={styles.roomsList}>
             <Text style={styles.roomsListTitle}>已添加的房间：</Text>
-            {newRooms.filter(r => r).map((room, index) => (
+            {newRooms.map((room, index) => (
               <View key={index} style={styles.roomItem}>
                 <Text style={styles.roomItemText}>{room}</Text>
                 <TouchableOpacity
@@ -156,6 +193,19 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  tipContainer: {
+    backgroundColor: '#e6f7ff',
+    marginTop: 10,
+    marginHorizontal: 15,
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#1890ff',
+  },
+  tipText: {
+    fontSize: 14,
+    color: '#1890ff',
   },
   inputSection: {
     backgroundColor: '#fff',
@@ -219,4 +269,3 @@ const styles = StyleSheet.create({
     color: '#ff4d4f',
   },
 });
-
