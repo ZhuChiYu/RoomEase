@@ -6,8 +6,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { Provider } from 'react-redux'
 import { store } from './store'
+import { restoreState } from './store/calendarSlice'
 import * as Notifications from 'expo-notifications'
 import { notificationService, addNotificationResponseListener } from './services/notifications'
+import { initializeLocalData } from './services/localDataService'
+import { persistedStorage } from './services/storage'
 
 // 创建 React Query 客户端
 const queryClient = new QueryClient({
@@ -33,24 +36,38 @@ export default function RootLayout() {
     // 应用加载完成后隐藏启动画面并初始化通知
     const prepare = async () => {
       try {
-        // 这里可以添加字体加载、API 初始化等
-        console.log('App is loading...')
+        console.log('🚀 App is loading...')
         
-        // 初始化推送通知
+        // 1. 初始化本地数据（首次启动时）
+        console.log('📦 初始化本地数据存储...')
+        await initializeLocalData()
+        
+        // 2. 恢复持久化的Redux状态
+        console.log('🔄 恢复应用状态...')
+        const persistedState = await persistedStorage.getState()
+        if (persistedState && persistedState.calendar) {
+          store.dispatch(restoreState(persistedState.calendar))
+          console.log('✅ 状态恢复成功')
+        } else {
+          console.log('ℹ️ 没有找到持久化状态，使用初始状态')
+        }
+        
+        // 3. 初始化推送通知
+        console.log('🔔 初始化推送通知...')
         const hasPermission = await notificationService.requestPermissions()
         if (hasPermission) {
           const token = await notificationService.getExpoPushToken()
-          console.log('Expo push token:', token)
+          console.log('📱 Expo push token:', token)
         }
         
-        await new Promise(resolve => setTimeout(resolve, 500))
-        console.log('App loaded successfully')
+        await new Promise(resolve => setTimeout(resolve, 300))
+        console.log('✅ App loaded successfully')
       } catch (e) {
-        console.warn('Error during app initialization:', e)
+        console.error('❌ Error during app initialization:', e)
       } finally {
         try {
           await SplashScreen.hideAsync()
-          console.log('SplashScreen hidden')
+          console.log('👋 SplashScreen hidden')
         } catch (error) {
           console.log('SplashScreen.hideAsync() failed - this is expected in some cases')
         }
