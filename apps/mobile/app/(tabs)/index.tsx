@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import {
   View,
   Text,
@@ -13,8 +13,17 @@ import {
 import { useRouter } from 'expo-router'
 import { DateWheelPicker } from '../components/DateWheelPicker'
 import { useAppSelector } from '../store/hooks'
+import { authStorage } from '../services/storage'
 
 const { width } = Dimensions.get('window')
+
+// 获取本地日期字符串（YYYY-MM-DD），避免时区问题
+const getLocalDateString = (date: Date = new Date()): string => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
 interface KPICardProps {
   title: string
@@ -92,18 +101,71 @@ export default function HomeScreen() {
   const reservations = useAppSelector(state => state.calendar.reservations)
   const rooms = useAppSelector(state => state.calendar.rooms)
   const roomStatuses = useAppSelector(state => state.calendar.roomStatuses)
+
+  // 用户信息状态
+  const [userInfo, setUserInfo] = useState({
+    name: '',
+    hotelName: '',
+  })
+
+  // 加载用户信息
+  useEffect(() => {
+    loadUserInfo()
+  }, [])
+
+  const loadUserInfo = async () => {
+    const savedUserInfo = await authStorage.getUserInfo()
+    if (savedUserInfo) {
+      setUserInfo({
+        name: savedUserInfo.name || '',
+        hotelName: savedUserInfo.hotelName || '',
+      })
+    }
+  }
+
+  // 根据时间返回问候语
+  const getGreeting = () => {
+    const hour = new Date().getHours()
+    if (hour >= 5 && hour < 12) {
+      return '早上好'
+    } else if (hour >= 12 && hour < 14) {
+      return '中午好'
+    } else if (hour >= 14 && hour < 18) {
+      return '下午好'
+    } else {
+      return '晚上好'
+    }
+  }
   
   // 计算今日数据
   const todayData = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = getLocalDateString()
     
-    // 今日入住
-    const todayCheckIn = reservations.filter(r => r.checkInDate === today && r.status !== 'cancelled').length
+    // 今日入住：今天是入住日期的房间
+    const todayCheckIns = reservations.filter(r => r.checkInDate === today && r.status !== 'cancelled')
+    const todayCheckInCount = todayCheckIns.length
     
-    // 今日退房
-    const todayCheckOut = reservations.filter(r => r.checkOutDate === today && r.status !== 'cancelled').length
+    // 今日入住费用：今天入住的所有房间费用总和
+    const todayCheckInRevenue = todayCheckIns.reduce((sum, r) => sum + (r.totalAmount || 0), 0)
     
-    // 当前在住
+    // 今日退房：今天是退房日期的房间（排除连续入住的情况）
+    const todayCheckOuts = reservations.filter(r => {
+      if (r.checkOutDate !== today || r.status === 'cancelled') return false
+      
+      // 检查是否有同一客人的连续订单（同一个客人、同一个房间、退房日期=入住日期）
+      const hasContinuousBooking = reservations.some(nextR => 
+        nextR.id !== r.id &&
+        nextR.guestPhone === r.guestPhone &&
+        nextR.roomId === r.roomId &&
+        nextR.checkInDate === r.checkOutDate &&
+        nextR.status !== 'cancelled'
+      )
+      
+      return !hasContinuousBooking
+    })
+    const todayCheckOutCount = todayCheckOuts.length
+    
+    // 当前在住：入住日期<=今天 且 退房日期>今天
     const currentOccupied = reservations.filter(r => {
       return r.checkInDate <= today && r.checkOutDate > today && r.status !== 'cancelled'
     }).length
@@ -120,25 +182,44 @@ export default function HomeScreen() {
     }).reduce((sum, r) => sum + (r.totalAmount || 0), 0)
     
     return {
-      todayCheckIn,
-      todayCheckOut,
+      todayCheckInCount,
+      todayCheckInRevenue,
+      todayCheckOutCount,
       currentOccupied,
       occupancyRate,
       monthlyRevenue,
     }
   }, [reservations, rooms])
   
-  // 今日及最近的预订（显示今日的预订）
+  // 最近的预订（显示最近创建的或今日及近期入住的订单）
   const recentReservations = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = getLocalDateString()
+    const threeDaysAgo = new Date()
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3)
+    const threeDaysAgoStr = getLocalDateString(threeDaysAgo)
+    
     return reservations
-      .filter(r => r.checkInDate === today && r.status !== 'cancelled')
-      .slice(0, 3)
+      .filter(r => {
+        // 显示：未取消的订单 且 (入住日期在最近3天到未来 或 最近创建的)
+        if (r.status === 'cancelled') return false
+        const isRecentCheckIn = r.checkInDate >= threeDaysAgoStr
+        const isRecentCreated = new Date(r.createdAt) >= threeDaysAgo
+        return isRecentCheckIn || isRecentCreated
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 5)
       .map(r => ({
         id: r.id,
+        orderId: r.orderId,
         guestName: r.guestName,
-        room: r.roomNumber,
+        guestPhone: r.guestPhone,
+        room: `${r.roomType}-${r.roomNumber}`,
         checkIn: r.checkInDate,
+        checkOutDate: r.checkOutDate,
+        channel: r.channel,
+        roomPrice: r.roomPrice.toString(),
+        nights: r.nights.toString(),
+        totalAmount: r.totalAmount.toString(),
         status: r.status === 'confirmed' ? 'confirmed' as const : 'pending' as const,
       }))
   }, [reservations])
@@ -185,26 +266,26 @@ export default function HomeScreen() {
   const kpiData = [
     {
       title: '今日入住',
-      value: todayData.todayCheckIn,
-      description: `共${todayData.todayCheckIn}间`,
+      value: todayData.todayCheckInCount,
+      description: `共${todayData.todayCheckInCount}间`,
       color: '#3b82f6'
     },
     {
       title: '今日退房',
-      value: todayData.todayCheckOut,
-      description: `共${todayData.todayCheckOut}间`,
+      value: todayData.todayCheckOutCount,
+      description: `共${todayData.todayCheckOutCount}间`,
       color: '#ef4444'
     },
     {
-      title: '当前在住',
-      value: todayData.currentOccupied,
+      title: '今日入住费用',
+      value: `¥${todayData.todayCheckInRevenue.toFixed(0)}`,
       description: `入住率 ${todayData.occupancyRate}%`,
       color: '#10b981'
     },
     {
       title: '本月收入',
-      value: `¥${todayData.monthlyRevenue.toFixed(2)}`,
-      description: `共${rooms.length}间房`,
+      value: `¥${todayData.monthlyRevenue.toFixed(0)}`,
+      description: `共${todayData.currentOccupied}间在住`,
       color: '#8b5cf6'
     }
   ]
@@ -315,8 +396,13 @@ export default function HomeScreen() {
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollView}>
         {/* 页面头部 */}
         <View style={styles.header}>
-          <Text style={styles.greeting}>早上好</Text>
-          <Text style={styles.subtitle}>阳光民宿管理系统</Text>
+          <Text style={styles.greeting}>
+            {getGreeting()}
+            {userInfo.name ? ` ${userInfo.name}` : ''}
+          </Text>
+          <Text style={styles.subtitle}>
+            {userInfo.hotelName || 'RoomEase管理系统'}
+          </Text>
         </View>
 
         {/* KPI 卡片 */}
@@ -414,24 +500,41 @@ export default function HomeScreen() {
               <Text style={styles.seeAllText}>查看全部</Text>
             </TouchableOpacity>
           </View>
-          <View style={styles.reservationList}>
-            {recentReservations.map((reservation, index) => (
-              <ReservationItem 
-                key={index} 
-                {...reservation} 
-                onPress={() => {
-                  Alert.alert(
-                    '预订详情',
-                    `客人：${reservation.guestName}\n房间：${reservation.room}\n入住：${reservation.checkIn}\n状态：${reservation.status === 'confirmed' ? '已确认' : '待确认'}`,
-                    [
-                      { text: '查看详情', onPress: () => router.push(`/booking-details?id=RES${String(index + 1).padStart(3, '0')}`) },
-                      { text: '取消', style: 'cancel' }
-                    ]
-                  )
-                }}
-              />
-            ))}
-          </View>
+          {recentReservations.length === 0 ? (
+            <View style={styles.emptyReservations}>
+              <Text style={styles.emptyText}>暂无预订</Text>
+            </View>
+          ) : (
+            <View style={styles.reservationList}>
+              {recentReservations.map((reservation, index) => (
+                <ReservationItem 
+                  key={index} 
+                  guestName={reservation.guestName}
+                  room={reservation.room}
+                  checkIn={reservation.checkIn}
+                  status={reservation.status}
+                  onPress={() => {
+                    router.push({
+                      pathname: '/order-details',
+                      params: {
+                        orderId: reservation.orderId,
+                        guestName: reservation.guestName,
+                        guestPhone: reservation.guestPhone,
+                        channel: reservation.channel,
+                        checkInDate: reservation.checkIn,
+                        checkOutDate: reservation.checkOutDate,
+                        roomType: reservation.room,
+                        roomPrice: reservation.roomPrice,
+                        guestCount: '1',
+                        nights: reservation.nights,
+                        totalAmount: reservation.totalAmount,
+                      }
+                    })
+                  }}
+                />
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
 
@@ -796,6 +899,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderRadius: 12,
     overflow: 'hidden',
+  },
+  emptyReservations: {
+    padding: 40,
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#999',
   },
   reservationItem: {
     flexDirection: 'row',
