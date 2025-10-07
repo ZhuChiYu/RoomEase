@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import {
   View,
   Text,
@@ -9,44 +9,21 @@ import {
   StatusBar,
 } from 'react-native'
 import { useRouter, useLocalSearchParams } from 'expo-router'
-
-interface LogItem {
-  id: string
-  action: string
-  operator: string
-  time: string
-  details: string
-}
+import { useAppSelector } from './store/hooks'
 
 export default function OperationLogsScreen() {
   const router = useRouter()
   const params = useLocalSearchParams()
   const { orderId } = params
 
-  // 示例操作日志数据
-  const logs: LogItem[] = [
-    {
-      id: '1',
-      action: '新增补录订单',
-      operator: '自来客',
-      time: '2025-10-06 14:21:22',
-      details: '渠道：自来客\n预订人：二阿呵\n手机：12467877976',
-    },
-    {
-      id: '2',
-      action: '正常入住',
-      operator: '三阿呵',
-      time: '2025-10-05 12:00:00',
-      details: '房间：大床房-1202\n入住时间：2025-10-05 12:00:00, 共 1晚\n房费：¥500',
-    },
-    {
-      id: '3',
-      action: '创建订单',
-      operator: '系统',
-      time: '2025-10-04 16:30:00',
-      details: '订单号：18156917954\n客人：二阿呵\n房间：大床房-1202',
-    },
-  ]
+  // 从Redux获取操作日志
+  const allLogs = useAppSelector(state => state.calendar.operationLogs)
+  
+  // 过滤当前订单的日志
+  const logs = useMemo(() => {
+    if (!orderId) return allLogs
+    return allLogs.filter(log => log.orderId === orderId).reverse()
+  }, [allLogs, orderId])
 
   return (
     <View style={styles.container}>
