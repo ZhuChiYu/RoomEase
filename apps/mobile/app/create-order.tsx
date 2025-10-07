@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   View,
   Text,
@@ -10,16 +10,37 @@ import {
   Alert,
   Platform,
   StatusBar,
+  KeyboardAvoidingView,
 } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useRouter, useLocalSearchParams } from 'expo-router'
 import { DateWheelPicker } from './components/DateWheelPicker'
-import { useAppDispatch } from './store/hooks'
+import { useAppDispatch, useAppSelector } from './store/hooks'
 import { addReservation } from './store/calendarSlice'
 import type { Reservation } from './store/types'
+
+// 获取本地日期字符串（YYYY-MM-DD），避免时区问题
+const getLocalDateString = (date: Date = new Date()): string => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+interface RoomInfo {
+  roomId: string
+  roomName: string
+  checkInDate: string
+  checkOutDate: string
+  price: number
+}
 
 export default function CreateOrderScreen() {
   const router = useRouter()
   const dispatch = useAppDispatch()
+  const params = useLocalSearchParams()
+  
+  // 从Redux获取所有可用房间
+  const allRooms = useAppSelector(state => state.calendar.rooms)
   
   const [formData, setFormData] = useState({
     guestName: '',
@@ -27,57 +48,116 @@ export default function CreateOrderScreen() {
     guestIdType: '身份证',
     guestIdNumber: '',
     channel: '自来客',
-    checkInDate: '2025-10-06',
-    checkOutDate: '2025-10-08',
-    roomType: '大床房-1202',
-    roomPrice: 1000.00,
-    dailyPrices: [] as Array<{ date: string; price: number }>,
     guestCount: 0,
   })
 
-  const [datePickerVisible, setDatePickerVisible] = useState(false)
-  const [datePickerType, setDatePickerType] = useState<'checkIn' | 'checkOut'>('checkIn')
-  const [channelModalVisible, setChannelModalVisible] = useState(false)
-  const [roomModalVisible, setRoomModalVisible] = useState(false)
-  const [guestCountModalVisible, setGuestCountModalVisible] = useState(false)
-  const [priceModalVisible, setPriceModalVisible] = useState(false)
-  const [editingPrice, setEditingPrice] = useState('')
-
-  // 计算入住时长（天数）
-  const calculateNights = () => {
-    const checkIn = new Date(formData.checkInDate)
-    const checkOut = new Date(formData.checkOutDate)
-    const diffTime = Math.abs(checkOut.getTime() - checkIn.getTime())
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    return diffDays
-  }
-
-  const nights = calculateNights()
-  const totalAmount = formData.roomPrice
-
-  // 渠道选项
-  const channels = ['自来客', '携程', '美团', '飞猪', '去哪儿', 'Booking', '电话预订', '其他']
-  
-  // 房间选项
-  const rooms = [
-    '大床房-1202',
-    '大床房-1203',
-    '双人房-12345',
-    '豪华房-1301',
-    '套房-1401',
-  ]
-
-  // 处理日期选择
-  const handleDateSelect = (date: string) => {
-    if (datePickerType === 'checkIn') {
-      setFormData(prev => ({ ...prev, checkInDate: date }))
-    } else {
-      setFormData(prev => ({ ...prev, checkOutDate: date }))
+  // 初始化默认房间信息
+  const getDefaultRoom = (): RoomInfo => {
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    return {
+      roomId: '1203',
+      roomName: '1203',
+      checkInDate: getLocalDateString(),
+      checkOutDate: getLocalDateString(tomorrow),
+      price: 1000.00
     }
   }
 
+  const [rooms, setRooms] = useState<RoomInfo[]>([getDefaultRoom()])
+  const [datePickerVisible, setDatePickerVisible] = useState(false)
+  const [datePickerType, setDatePickerType] = useState<'checkIn' | 'checkOut'>('checkIn')
+  const [editingRoomIndex, setEditingRoomIndex] = useState<number | null>(null)
+  const [channelModalVisible, setChannelModalVisible] = useState(false)
+  const [roomSelectModalVisible, setRoomSelectModalVisible] = useState(false)
+  const [priceModalVisible, setPriceModalVisible] = useState(false)
+  const [editingPrice, setEditingPrice] = useState('')
+
+  // 从路由参数初始化房间信息
+  useEffect(() => {
+    console.log('📝 [CreateOrder] useEffect触发，params:', params)
+    console.log('📝 [CreateOrder] 今天日期:', getLocalDateString())
+    
+    if (params.roomsData && typeof params.roomsData === 'string') {
+      try {
+        const roomsData = JSON.parse(params.roomsData)
+        console.log('📝 [CreateOrder] 接收到的房间数据:', roomsData)
+        console.log('📝 [CreateOrder] 房间数量:', roomsData.length)
+        
+        roomsData.forEach((room: any, index: number) => {
+          console.log(`📝 [CreateOrder] 房间${index + 1}:`, {
+            roomId: room.roomId,
+            roomName: room.roomName,
+            checkInDate: room.checkInDate,
+            checkOutDate: room.checkOutDate
+          })
+        })
+        
+        const mappedRooms = roomsData.map((room: any) => ({
+          ...room,
+          price: 1000.00
+        }))
+        console.log('📝 [CreateOrder] 设置到state的rooms:', mappedRooms)
+        setRooms(mappedRooms)
+      } catch (error) {
+        console.error('解析房间数据失败:', error)
+      }
+    } else if (params.roomId && params.roomName) {
+      // 兼容单房间模式
+      console.log('📝 [CreateOrder] 单房间模式，params:', {
+        roomId: params.roomId,
+        roomName: params.roomName,
+        checkInDate: params.checkInDate,
+        checkOutDate: params.checkOutDate
+      })
+      setRooms([{
+        roomId: params.roomId as string,
+        roomName: params.roomName as string,
+        checkInDate: (params.checkInDate as string) || new Date().toISOString().split('T')[0],
+        checkOutDate: (params.checkOutDate as string) || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        price: 1000.00
+      }])
+    }
+    // 如果没有从参数传入数据，保持默认房间（已在useState中初始化）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.roomsData, params.roomId, params.roomName])
+
+  // 计算总金额
+  const totalAmount = rooms.reduce((sum, room) => sum + room.price, 0)
+  const totalNights = rooms.reduce((sum, room) => {
+    const checkIn = new Date(room.checkInDate)
+    const checkOut = new Date(room.checkOutDate)
+    const diffTime = Math.abs(checkOut.getTime() - checkIn.getTime())
+    const nights = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    return sum + nights
+  }, 0)
+
+  // 渠道选项
+  const channels = ['自来客', '携程', '美团', '飞猪', '去哪儿', 'Booking', '电话预订', '其他']
+
+  // 处理日期选择
+  const handleDateSelect = (date: string) => {
+    if (editingRoomIndex === null) return
+    
+    console.log('📝 [CreateOrder] 用户选择日期:', {
+      type: datePickerType,
+      date,
+      roomIndex: editingRoomIndex
+    })
+    
+    const updatedRooms = [...rooms]
+    if (datePickerType === 'checkIn') {
+      updatedRooms[editingRoomIndex].checkInDate = date
+    } else {
+      updatedRooms[editingRoomIndex].checkOutDate = date
+    }
+    console.log('📝 [CreateOrder] 更新后的rooms:', updatedRooms)
+    setRooms(updatedRooms)
+  }
+
   // 打开日期选择器
-  const openDatePicker = (type: 'checkIn' | 'checkOut') => {
+  const openDatePicker = (roomIndex: number, type: 'checkIn' | 'checkOut') => {
+    setEditingRoomIndex(roomIndex)
     setDatePickerType(type)
     setDatePickerVisible(true)
   }
@@ -95,21 +175,52 @@ export default function CreateOrderScreen() {
     })
   }
 
+  // 打开房间选择
+  const handleRoomSelect = (roomIndex: number) => {
+    setEditingRoomIndex(roomIndex)
+    setRoomSelectModalVisible(true)
+  }
+
+  // 选择房间
+  const handleSelectRoom = (roomId: string, roomName: string) => {
+    if (editingRoomIndex === null) return
+    
+    const updatedRooms = [...rooms]
+    updatedRooms[editingRoomIndex].roomId = roomId
+    updatedRooms[editingRoomIndex].roomName = roomName
+    setRooms(updatedRooms)
+    setRoomSelectModalVisible(false)
+  }
+
   // 打开房费编辑
-  const handlePricePress = () => {
+  const handlePricePress = (roomIndex: number) => {
+    setEditingRoomIndex(roomIndex)
+    setEditingPrice(rooms[roomIndex].price.toFixed(2))
     setPriceModalVisible(true)
-    setEditingPrice(formData.roomPrice.toFixed(2))
   }
 
   // 确认房费修改
   const handlePriceConfirm = () => {
+    if (editingRoomIndex === null) return
+    
     const newPrice = parseFloat(editingPrice)
     if (!isNaN(newPrice) && newPrice >= 0) {
-      setFormData(prev => ({ ...prev, roomPrice: newPrice }))
+      const updatedRooms = [...rooms]
+      updatedRooms[editingRoomIndex].price = newPrice
+      setRooms(updatedRooms)
       setPriceModalVisible(false)
     } else {
       Alert.alert('提示', '请输入有效的价格')
     }
+  }
+
+  // 计算入住时长（天数）
+  const calculateNights = (checkInDate: string, checkOutDate: string) => {
+    const checkIn = new Date(checkInDate)
+    const checkOut = new Date(checkOutDate)
+    const diffTime = Math.abs(checkOut.getTime() - checkIn.getTime())
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    return diffDays
   }
 
   // 提交订单
@@ -122,43 +233,52 @@ export default function CreateOrderScreen() {
       Alert.alert('提示', '请输入手机号')
       return
     }
-    
-    // 生成订单ID
-    const orderId = Date.now().toString()
-    const reservationId = `RES_${orderId}`
-    
-    // 从房间类型中提取房间号（如 "大床房-1202" => "1202"）
-    const roomIdMatch = formData.roomType.match(/-(\d+)$/)
-    const roomId = roomIdMatch ? roomIdMatch[1] : formData.roomType
-    
-    // 创建预订对象
-    const reservation: Reservation = {
-      id: reservationId,
-      orderId,
-      roomId,
-      roomNumber: roomId,
-      roomType: formData.roomType,
-      guestName: formData.guestName,
-      guestPhone: formData.guestPhone,
-      guestIdType: formData.guestIdType,
-      guestIdNumber: formData.guestIdNumber,
-      channel: formData.channel,
-      checkInDate: formData.checkInDate,
-      checkOutDate: formData.checkOutDate,
-      roomPrice: formData.roomPrice,
-      totalAmount: totalAmount,
-      nights,
-      status: 'confirmed',
-      createdAt: new Date().toISOString(),
+    if (rooms.length === 0) {
+      Alert.alert('提示', '请选择房间')
+      return
     }
+
+    // 为每个房间创建预订
+    const orderId = Date.now().toString()
     
-    // 添加到Redux状态
-    console.log('📝 [CreateOrder] 创建预订:', reservation)
-    dispatch(addReservation(reservation))
-    console.log('✅ [CreateOrder] 预订已添加到Redux')
-    
-    // 使用 replace 替换当前页面为订单详情页
-    // 这样返回时会回到房态日历页面，而不是新增订单页面
+    rooms.forEach((room, index) => {
+      const reservationId = `RES_${orderId}_${index}`
+      const nights = calculateNights(room.checkInDate, room.checkOutDate)
+      
+      console.log('📝 [CreateOrder] 创建预订:', {
+        roomId: room.roomId,
+        roomName: room.roomName,
+        checkInDate: room.checkInDate,
+        checkOutDate: room.checkOutDate,
+        nights,
+      })
+      
+      const reservation: Reservation = {
+        id: reservationId,
+        orderId,
+        roomId: room.roomId,
+        roomNumber: room.roomId,
+        roomType: room.roomName,
+        guestName: formData.guestName,
+        guestPhone: formData.guestPhone,
+        guestIdType: formData.guestIdType,
+        guestIdNumber: formData.guestIdNumber,
+        channel: formData.channel,
+        checkInDate: room.checkInDate,
+        checkOutDate: room.checkOutDate,
+        roomPrice: room.price,
+        totalAmount: room.price,
+        nights,
+        status: 'confirmed',
+        createdAt: new Date().toISOString(),
+      }
+      
+      console.log('📝 [CreateOrder] 提交的预订对象:', reservation)
+      dispatch(addReservation(reservation))
+    })
+
+    // 跳转到订单详情页（显示第一个房间的信息）
+    const firstRoom = rooms[0]
     router.replace({
       pathname: '/order-details',
       params: {
@@ -166,12 +286,12 @@ export default function CreateOrderScreen() {
         guestName: formData.guestName,
         guestPhone: formData.guestPhone,
         channel: formData.channel,
-        checkInDate: formData.checkInDate,
-        checkOutDate: formData.checkOutDate,
-        roomType: formData.roomType,
-        roomPrice: formData.roomPrice.toString(),
+        checkInDate: firstRoom.checkInDate,
+        checkOutDate: firstRoom.checkOutDate,
+        roomType: firstRoom.roomName,
+        roomPrice: firstRoom.price.toString(),
         guestCount: formData.guestCount.toString(),
-        nights: nights.toString(),
+        nights: calculateNights(firstRoom.checkInDate, firstRoom.checkOutDate).toString(),
         totalAmount: totalAmount.toString(),
       }
     })
@@ -190,7 +310,7 @@ export default function CreateOrderScreen() {
     
     Alert.alert(
       '入住成功',
-      `${formData.guestName} 已成功入住\n房间：${formData.roomType}\n入住时间：${formData.checkInDate}`,
+      `${formData.guestName} 已成功入住\n房间：${rooms.map(r => r.roomName).join(', ')}`,
       [
         {
           text: '确定',
@@ -249,80 +369,84 @@ export default function CreateOrderScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* 住宿信息1 */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>住宿信息1</Text>
-          
-          <TouchableOpacity 
-            style={styles.formItem}
-            onPress={() => openDatePicker('checkIn')}
-          >
-            <Text style={styles.label}>入住时间</Text>
-            <View style={styles.selectContainer}>
-              <Text style={styles.selectText}>{formData.checkInDate}</Text>
-              <Text style={styles.arrow}>›</Text>
-            </View>
-          </TouchableOpacity>
+        {/* 住宿信息 - 多房间 */}
+        {rooms.map((room, index) => (
+          <View key={index} style={styles.section}>
+            <Text style={styles.sectionTitle}>住宿信息 {rooms.length > 1 ? index + 1 : ''}</Text>
+            
+            <TouchableOpacity 
+              style={styles.formItem}
+              onPress={() => openDatePicker(index, 'checkIn')}
+            >
+              <Text style={styles.label}>入住时间</Text>
+              <View style={styles.selectContainer}>
+                <Text style={styles.selectText}>{room.checkInDate}</Text>
+                <Text style={styles.arrow}>›</Text>
+              </View>
+            </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.formItem}
-            onPress={() => openDatePicker('checkOut')}
-          >
-            <Text style={styles.label}>离店时间</Text>
-            <View style={styles.selectContainer}>
-              <Text style={styles.selectText}>{formData.checkOutDate}</Text>
-              <Text style={styles.arrow}>›</Text>
-            </View>
-          </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.formItem}
+              onPress={() => openDatePicker(index, 'checkOut')}
+            >
+              <Text style={styles.label}>离店时间</Text>
+              <View style={styles.selectContainer}>
+                <Text style={styles.selectText}>{room.checkOutDate}</Text>
+                <Text style={styles.arrow}>›</Text>
+              </View>
+            </TouchableOpacity>
 
-          <View style={styles.formItem}>
-            <Text style={styles.label}>入住时长</Text>
-            <View style={styles.selectContainer}>
-              <Text style={styles.selectText}>{nights}晚</Text>
-              <Text style={styles.arrow}>›</Text>
+            <View style={styles.formItem}>
+              <Text style={styles.label}>入住时长</Text>
+              <View style={styles.selectContainer}>
+                <Text style={styles.selectText}>{calculateNights(room.checkInDate, room.checkOutDate)}晚</Text>
+                <Text style={styles.arrow}>›</Text>
+              </View>
             </View>
+
+            <TouchableOpacity 
+              style={styles.formItem}
+              onPress={() => handleRoomSelect(index)}
+            >
+              <Text style={styles.label}>房间</Text>
+              <View style={styles.selectContainer}>
+                <Text style={styles.selectText}>{room.roomName}</Text>
+                <Text style={styles.arrow}>›</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.formItem}
+              onPress={() => handlePricePress(index)}
+            >
+              <Text style={styles.label}>房费</Text>
+              <View style={styles.selectContainer}>
+                <Text style={styles.selectText}>{room.price.toFixed(2)}</Text>
+                <Text style={styles.arrow}>›</Text>
+              </View>
+            </TouchableOpacity>
+
+            {index === 0 && (
+              <TouchableOpacity 
+                style={styles.formItem}
+                onPress={handleGuestInfoPress}
+              >
+                <Text style={styles.label}>入住人</Text>
+                <View style={styles.selectContainer}>
+                  <Text style={styles.selectText}>
+                    {formData.guestName ? `${formData.guestName} ${formData.guestPhone}` : '请添加入住人'}
+                  </Text>
+                  <Text style={styles.arrow}>›</Text>
+                </View>
+              </TouchableOpacity>
+            )}
           </View>
-
-          <TouchableOpacity 
-            style={styles.formItem}
-            onPress={() => setRoomModalVisible(true)}
-          >
-            <Text style={styles.label}>房间</Text>
-            <View style={styles.selectContainer}>
-              <Text style={styles.selectText}>{formData.roomType}</Text>
-              <Text style={styles.arrow}>›</Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.formItem}
-            onPress={handlePricePress}
-          >
-            <Text style={styles.label}>房费</Text>
-            <View style={styles.selectContainer}>
-              <Text style={styles.selectText}>{formData.roomPrice.toFixed(2)}</Text>
-              <Text style={styles.arrow}>›</Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.formItem}
-            onPress={handleGuestInfoPress}
-          >
-            <Text style={styles.label}>入住人</Text>
-            <View style={styles.selectContainer}>
-              <Text style={styles.selectText}>
-                {formData.guestName ? `${formData.guestName} ${formData.guestPhone}` : '请添加入住人'}
-              </Text>
-              <Text style={styles.arrow}>›</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
+        ))}
 
         {/* 订单金额 */}
         <View style={styles.priceSection}>
           <Text style={styles.priceLabel}>订单金额：<Text style={styles.priceAmount}>¥{totalAmount.toFixed(2)}</Text></Text>
-          <Text style={styles.nightsLabel}>消耗 {nights} 间夜</Text>
+          <Text style={styles.nightsLabel}>消耗 {totalNights} 间夜</Text>
         </View>
       </ScrollView>
 
@@ -347,7 +471,10 @@ export default function CreateOrderScreen() {
         visible={datePickerVisible}
         onClose={() => setDatePickerVisible(false)}
         onSelect={handleDateSelect}
-        initialDate={datePickerType === 'checkIn' ? formData.checkInDate : formData.checkOutDate}
+        initialDate={editingRoomIndex !== null && rooms[editingRoomIndex] 
+          ? (datePickerType === 'checkIn' ? rooms[editingRoomIndex].checkInDate : rooms[editingRoomIndex].checkOutDate)
+          : new Date().toISOString().split('T')[0]
+        }
         title={datePickerType === 'checkIn' ? '选择入住日期' : '选择离店日期'}
       />
 
@@ -388,35 +515,31 @@ export default function CreateOrderScreen() {
 
       {/* 房间选择弹窗 */}
       <Modal
-        visible={roomModalVisible}
+        visible={roomSelectModalVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setRoomModalVisible(false)}
+        onRequestClose={() => setRoomSelectModalVisible(false)}
       >
         <TouchableOpacity 
           style={styles.modalOverlay}
           activeOpacity={1}
-          onPress={() => setRoomModalVisible(false)}
+          onPress={() => setRoomSelectModalVisible(false)}
         >
           <View style={styles.modalSheet}>
             <Text style={styles.modalTitle}>选择房间</Text>
-            {rooms.map(room => (
-              <TouchableOpacity
-                key={room}
-                style={styles.modalOption}
-                onPress={() => {
-                  setFormData(prev => ({ ...prev, roomType: room }))
-                  setRoomModalVisible(false)
-                }}
-              >
-                <Text style={[
-                  styles.modalOptionText,
-                  formData.roomType === room && styles.modalOptionSelected
-                ]}>
-                  {room}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            <ScrollView style={styles.modalScrollView}>
+              {allRooms.map(room => (
+                <TouchableOpacity
+                  key={room.id}
+                  style={styles.modalOption}
+                  onPress={() => handleSelectRoom(room.id, room.name)}
+                >
+                  <Text style={styles.modalOptionText}>
+                    {room.name} ({room.type})
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -428,71 +551,49 @@ export default function CreateOrderScreen() {
         animationType="slide"
         onRequestClose={() => setPriceModalVisible(false)}
       >
-        <TouchableOpacity 
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setPriceModalVisible(false)}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardAvoidView}
         >
           <TouchableOpacity 
+            style={styles.modalOverlay}
             activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
+            onPress={() => setPriceModalVisible(false)}
           >
-            <View style={styles.priceModalSheet}>
-              <View style={styles.priceModalHeader}>
-                <TouchableOpacity onPress={() => setPriceModalVisible(false)}>
-                  <Text style={styles.priceModalCancel}>取消</Text>
-                </TouchableOpacity>
-                <Text style={styles.priceModalTitle}>房价</Text>
-                <TouchableOpacity onPress={handlePriceConfirm}>
-                  <Text style={styles.priceModalConfirm}>确定</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.priceModalContent}>
-                {/* 总价 */}
-                <View style={styles.priceRow}>
-                  <Text style={styles.priceRowLabel}>总价</Text>
-                  <View style={styles.priceInputContainer}>
-                    <TextInput
-                      style={styles.priceInput}
-                      value={editingPrice}
-                      onChangeText={setEditingPrice}
-                      keyboardType="decimal-pad"
-                      placeholder="0.00"
-                    />
-                    <Text style={styles.priceUnit}>元</Text>
-                    <TouchableOpacity>
-                      <Text style={styles.priceEdit}>✏️</Text>
-                    </TouchableOpacity>
-                  </View>
+            <TouchableOpacity 
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.priceModalContainer}>
+                <View style={styles.priceModalHeader}>
+                  <TouchableOpacity onPress={() => setPriceModalVisible(false)}>
+                    <Text style={styles.priceModalCancel}>取消</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.priceModalTitle}>房价</Text>
+                  <TouchableOpacity onPress={handlePriceConfirm}>
+                    <Text style={styles.priceModalConfirm}>确定</Text>
+                  </TouchableOpacity>
                 </View>
 
-                <Text style={styles.priceTip}>以下为每个间夜价格</Text>
-
-                {/* 每日房价列表 */}
-                {Array.from({ length: nights }, (_, i) => {
-                  const date = new Date(formData.checkInDate)
-                  date.setDate(date.getDate() + i)
-                  const dateStr = date.toISOString().split('T')[0]
-                  const dailyPrice = formData.roomPrice / nights
-                  
-                  return (
-                    <View key={i} style={styles.priceRow}>
-                      <Text style={styles.priceRowLabel}>{dateStr}</Text>
-                      <View style={styles.priceInputContainer}>
-                        <Text style={styles.priceValue}>{dailyPrice.toFixed(2)}</Text>
-                        <Text style={styles.priceUnit}>元</Text>
-                        <TouchableOpacity>
-                          <Text style={styles.priceEdit}>✏️</Text>
-                        </TouchableOpacity>
-                      </View>
+                <View style={styles.priceModalContent}>
+                  <View style={styles.priceRow}>
+                    <Text style={styles.priceRowLabel}>总价</Text>
+                    <View style={styles.priceInputContainer}>
+                      <TextInput
+                        style={styles.priceInput}
+                        value={editingPrice}
+                        onChangeText={setEditingPrice}
+                        keyboardType="decimal-pad"
+                        placeholder="0.00"
+                      />
+                      <Text style={styles.priceUnit}>元</Text>
                     </View>
-                  )
-                })}
+                  </View>
+                </View>
               </View>
-            </View>
+            </TouchableOpacity>
           </TouchableOpacity>
-        </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   )
@@ -625,6 +726,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: 'white',
   },
+  keyboardAvoidView: {
+    flex: 1,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -645,6 +749,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
+  modalScrollView: {
+    maxHeight: 400,
+  },
   modalOption: {
     paddingVertical: 16,
     paddingHorizontal: 20,
@@ -659,11 +766,11 @@ const styles = StyleSheet.create({
     color: '#4a90e2',
     fontWeight: '600',
   },
-  priceModalSheet: {
+  priceModalContainer: {
     backgroundColor: 'white',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
-    maxHeight: '80%',
+    maxHeight: 300,
   },
   priceModalHeader: {
     flexDirection: 'row',
@@ -690,15 +797,12 @@ const styles = StyleSheet.create({
   },
   priceModalContent: {
     padding: 16,
-    maxHeight: 500,
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f8f8f8',
   },
   priceRowLabel: {
     fontSize: 14,
@@ -714,26 +818,14 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     minWidth: 80,
     paddingHorizontal: 8,
-  },
-  priceValue: {
-    fontSize: 16,
-    color: '#333',
-    minWidth: 80,
-    textAlign: 'right',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 4,
+    paddingVertical: 4,
   },
   priceUnit: {
     fontSize: 14,
     color: '#999',
-    marginLeft: 4,
-    marginRight: 8,
-  },
-  priceEdit: {
-    fontSize: 16,
-  },
-  priceTip: {
-    fontSize: 12,
-    color: '#999',
-    marginVertical: 12,
+    marginLeft: 8,
   },
 })
-
