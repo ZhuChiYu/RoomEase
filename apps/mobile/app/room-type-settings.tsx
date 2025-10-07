@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,49 +8,44 @@ import {
   Platform,
   StatusBar,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-
-interface RoomType {
-  id: string;
-  name: string;
-  shortName: string;
-  defaultPrice: number;
-  rooms: string[];
-}
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useAppSelector } from './store/hooks';
 
 export default function RoomTypeSettingsScreen() {
   const router = useRouter();
   
-  // 示例数据 - 实际应该从全局状态或API获取
-  const [roomTypes, setRoomTypes] = useState<RoomType[]>([
-    {
-      id: '1',
-      name: '大床房',
-      shortName: '大床房',
-      defaultPrice: 500,
-      rooms: ['1202'],
-    },
-    {
-      id: '2',
-      name: '双人房',
-      shortName: '双人房',
-      defaultPrice: 600,
-      rooms: [],
-    },
-    {
-      id: '3',
-      name: '2润',
-      shortName: '单人房',
-      defaultPrice: 400,
-      rooms: [],
-    },
-  ]);
+  // 从Redux获取房型和房间数据
+  const roomTypes = useAppSelector(state => state.calendar.roomTypes);
+  const rooms = useAppSelector(state => state.calendar.rooms);
+
+  console.log('🏠 [房型设置] 当前房型数据:', roomTypes);
+  console.log('🚪 [房型设置] 当前房间数据:', rooms);
+
+  // 计算每个房型的房间数量
+  const roomTypesWithRoomCount = useMemo(() => {
+    return roomTypes.map(roomType => {
+      const roomCount = rooms.filter(room => room.type === roomType.name).length;
+      const roomIds = rooms.filter(room => room.type === roomType.name).map(room => room.id);
+      return {
+        ...roomType,
+        roomCount,
+        roomIds,
+      };
+    });
+  }, [roomTypes, rooms]);
+
+  // 页面获得焦点时重新记录数据状态
+  useFocusEffect(
+    useCallback(() => {
+      console.log('📱 [房型设置] 页面获得焦点，当前房型数量:', roomTypes.length);
+    }, [roomTypes])
+  );
 
   const handleAddRoomType = () => {
     router.push('/edit-room-type');
   };
 
-  const handleEditRoomType = (roomType: RoomType) => {
+  const handleEditRoomType = (roomType: any) => {
     router.push({
       pathname: '/edit-room-type',
       params: {
@@ -58,7 +53,8 @@ export default function RoomTypeSettingsScreen() {
         name: roomType.name,
         shortName: roomType.shortName,
         defaultPrice: roomType.defaultPrice.toString(),
-        rooms: JSON.stringify(roomType.rooms),
+        differentiateWeekend: roomType.differentiateWeekend ? 'true' : 'false',
+        rooms: JSON.stringify(roomType.roomIds || []),
       },
     });
   };
@@ -74,7 +70,7 @@ export default function RoomTypeSettingsScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      {roomTypes.length === 0 ? (
+      {roomTypesWithRoomCount.length === 0 ? (
         /* 空状态 */
         <View style={styles.emptyContainer}>
           <View style={styles.emptyIcon}>
@@ -87,10 +83,10 @@ export default function RoomTypeSettingsScreen() {
         /* 房型列表 */
         <ScrollView style={styles.content}>
           <View style={styles.summary}>
-            <Text style={styles.summaryText}>共 {roomTypes.length} 个房型</Text>
+            <Text style={styles.summaryText}>共 {roomTypesWithRoomCount.length} 个房型</Text>
           </View>
 
-          {roomTypes.map((roomType) => (
+          {roomTypesWithRoomCount.map((roomType) => (
             <TouchableOpacity
               key={roomType.id}
               style={styles.roomTypeCard}
@@ -99,10 +95,10 @@ export default function RoomTypeSettingsScreen() {
               <View style={styles.roomTypeHeader}>
                 <View>
                   <Text style={styles.roomTypeName}>{roomType.name}</Text>
-                  <Text style={styles.roomTypeSubName}>{roomType.shortName}</Text>
+                  <Text style={styles.roomTypeSubName}>{roomType.shortName} · ¥{roomType.defaultPrice}</Text>
                 </View>
                 <View style={styles.roomTypeRight}>
-                  <Text style={styles.roomCount}>{roomType.rooms.length}间</Text>
+                  <Text style={styles.roomCount}>{roomType.roomCount}间</Text>
                   <Text style={styles.arrow}>›</Text>
                 </View>
               </View>
@@ -241,4 +237,3 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 });
-
