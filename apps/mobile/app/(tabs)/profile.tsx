@@ -22,7 +22,7 @@ import {
   applyImportedData,
   clearAllData,
 } from '../services/dataBackupService'
-import { persistedStorage } from '../services/storage'
+import { persistedStorage, authStorage } from '../services/storage'
 
 interface UserInfo {
   name: string
@@ -31,6 +31,8 @@ interface UserInfo {
   avatar?: string
   role: string
   property: string
+  hotelName: string
+  position: string
 }
 
 interface SettingsProps {
@@ -79,6 +81,8 @@ export default function ProfileScreen() {
     phone: '13800138888',
     role: '酒店经理',
     property: '阳光民宿',
+    hotelName: '',
+    position: '',
   })
 
   const [settings, setSettings] = useState({
@@ -102,6 +106,25 @@ export default function ProfileScreen() {
     loadDataStatistics()
   }, [calendarState])
 
+  // 加载用户信息
+  useEffect(() => {
+    loadUserInfo()
+  }, [])
+
+  const loadUserInfo = async () => {
+    const savedUserInfo = await authStorage.getUserInfo()
+    if (savedUserInfo) {
+      setUserInfo(prev => ({
+        ...prev,
+        ...savedUserInfo
+      }))
+    }
+  }
+
+  const saveUserInfo = async (info: UserInfo) => {
+    await authStorage.saveUserInfo(info)
+  }
+
   const loadDataStatistics = async () => {
     const stats = await getDataStatistics()
     setDataStats(stats)
@@ -123,16 +146,18 @@ export default function ProfileScreen() {
     setEditModalVisible(true)
   }
 
-  const saveProfileEdit = () => {
+  const saveProfileEdit = async () => {
     if (!editValue.trim()) {
       Alert.alert('错误', '请输入有效的内容')
       return
     }
 
-    setUserInfo(prev => ({
-      ...prev,
+    const newUserInfo = {
+      ...userInfo,
       [editField]: editValue
-    }))
+    }
+    setUserInfo(newUserInfo)
+    await saveUserInfo(newUserInfo)
     setEditModalVisible(false)
     Alert.alert('成功', '个人信息已更新')
   }
@@ -271,7 +296,9 @@ export default function ProfileScreen() {
                         dispatch(restoreState(importedData))
                         
                         // 保存到本地存储
-                        await persistedStorage.saveState({ calendar: importedData })
+                        await persistedStorage.saveState({ 
+                          calendar: importedData
+                        })
                         
                         Alert.alert('导入成功', '数据已成功导入，应用将自动刷新')
                         
@@ -337,8 +364,10 @@ export default function ProfileScreen() {
               // 重置Redux状态
               dispatch(restoreState({
                 rooms: [],
+                roomTypes: [],
                 reservations: [],
                 roomStatuses: [],
+                operationLogs: [],
               }))
               
               Alert.alert('清除成功', '所有数据已清除，应用将重新初始化')
@@ -450,15 +479,12 @@ export default function ProfileScreen() {
           </TouchableOpacity>
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{userInfo.name}</Text>
-            <Text style={styles.userRole}>{userInfo.role} • {userInfo.property}</Text>
+            <Text style={styles.userRole}>
+              {userInfo.position || userInfo.role}
+              {(userInfo.hotelName || userInfo.property) && ` • ${userInfo.hotelName || userInfo.property}`}
+            </Text>
             <Text style={styles.userEmail}>{userInfo.email}</Text>
           </View>
-          <TouchableOpacity 
-            style={styles.editButton}
-            onPress={() => handleEditProfile('name')}
-          >
-            <Text style={styles.editButtonText}>编辑</Text>
-          </TouchableOpacity>
         </View>
 
         {/* 个人信息设置 */}
@@ -482,6 +508,18 @@ export default function ProfileScreen() {
               value={userInfo.phone}
               type="input"
               onPress={() => handleEditProfile('phone')}
+            />
+            <SettingItem
+              label="民宿/酒店名称"
+              value={userInfo.hotelName || '未设置'}
+              type="input"
+              onPress={() => handleEditProfile('hotelName')}
+            />
+            <SettingItem
+              label="职位"
+              value={userInfo.position || '未设置'}
+              type="input"
+              onPress={() => handleEditProfile('position')}
             />
             <SettingItem
               label="修改密码"
@@ -610,13 +648,25 @@ export default function ProfileScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              编辑{editField === 'name' ? '姓名' : editField === 'email' ? '邮箱' : '手机号'}
+              编辑{
+                editField === 'name' ? '姓名' : 
+                editField === 'email' ? '邮箱' : 
+                editField === 'phone' ? '手机号' :
+                editField === 'hotelName' ? '民宿/酒店名称' :
+                editField === 'position' ? '职位' : ''
+              }
             </Text>
             <TextInput
               style={styles.modalInput}
               value={editValue}
               onChangeText={setEditValue}
-              placeholder={`请输入${editField === 'name' ? '姓名' : editField === 'email' ? '邮箱' : '手机号'}`}
+              placeholder={`请输入${
+                editField === 'name' ? '姓名' : 
+                editField === 'email' ? '邮箱' : 
+                editField === 'phone' ? '手机号' :
+                editField === 'hotelName' ? '民宿/酒店名称' :
+                editField === 'position' ? '职位' : ''
+              }`}
               keyboardType={editField === 'email' ? 'email-address' : editField === 'phone' ? 'phone-pad' : 'default'}
             />
             <View style={styles.modalButtons}>
