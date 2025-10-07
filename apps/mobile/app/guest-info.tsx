@@ -15,6 +15,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
 interface GuestInfo {
+  id: string;
   name: string;
   phone: string;
   idType: string;
@@ -25,21 +26,34 @@ export default function GuestInfoScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   
-  // 判断是否是编辑模式
-  const isEdit = params.name || params.phone || params.idType || params.idNumber;
+  // 入住人列表
+  const [guestList, setGuestList] = useState<GuestInfo[]>([]);
+  
+  // 当前编辑的入住人
+  const [currentGuest, setCurrentGuest] = useState<GuestInfo | null>(null);
+  
+  // 编辑模式
+  const [isEditing, setIsEditing] = useState(false);
 
-  const [guestInfo, setGuestInfo] = useState<GuestInfo>({
-    name: (params.name as string) || '',
-    phone: (params.phone as string) || '',
-    idType: (params.idType as string) || '身份证',
-    idNumber: (params.idNumber as string) || '',
-  });
-
-  const [showEmpty, setShowEmpty] = useState(!isEdit);
+  // 从路由参数初始化入住人信息
+  useEffect(() => {
+    if (params.name && params.phone) {
+      const initialGuest: GuestInfo = {
+        id: Date.now().toString(),
+        name: params.name as string,
+        phone: params.phone as string,
+        idType: (params.idType as string) || '身份证',
+        idNumber: (params.idNumber as string) || '',
+      };
+      setGuestList([initialGuest]);
+    }
+  }, []);
 
   const idTypes = ['身份证', '护照', '其他'];
 
   const handleIdTypeSelect = () => {
+    if (!currentGuest) return;
+    
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
         {
@@ -48,22 +62,35 @@ export default function GuestInfoScreen() {
         },
         (buttonIndex) => {
           if (buttonIndex > 0) {
-            setGuestInfo({ ...guestInfo, idType: idTypes[buttonIndex - 1] });
+            setCurrentGuest({ ...currentGuest, idType: idTypes[buttonIndex - 1] });
           }
         }
       );
     }
   };
 
-  const handleManualAdd = () => {
-    setShowEmpty(false);
+  const handleAddGuest = () => {
+    const newGuest: GuestInfo = {
+      id: Date.now().toString(),
+      name: '',
+      phone: '',
+      idType: '身份证',
+      idNumber: '',
+    };
+    setCurrentGuest(newGuest);
+    setIsEditing(true);
   };
 
   const handlePhotoUpload = () => {
     Alert.alert('提示', '拍照/上传功能开发中');
   };
 
-  const handleDelete = () => {
+  const handleEditGuest = (guest: GuestInfo) => {
+    setCurrentGuest(guest);
+    setIsEditing(true);
+  };
+
+  const handleDeleteGuest = (guestId: string) => {
     Alert.alert(
       '确认删除',
       '确定要删除这位入住人吗？',
@@ -73,37 +100,58 @@ export default function GuestInfoScreen() {
           text: '删除',
           style: 'destructive',
           onPress: () => {
-            // 返回上一页并清空入住人信息
-            router.back();
+            setGuestList(prev => prev.filter(g => g.id !== guestId));
           },
         },
       ]
     );
   };
 
-  const handleComplete = () => {
-    if (!guestInfo.name.trim()) {
+  const handleSaveGuest = () => {
+    if (!currentGuest) return;
+    
+    if (!currentGuest.name.trim()) {
       Alert.alert('提示', '请输入姓名');
       return;
     }
-    if (!guestInfo.phone.trim()) {
+    if (!currentGuest.phone.trim()) {
       Alert.alert('提示', '请输入手机号');
       return;
     }
 
+    // 检查是否已存在
+    const existingIndex = guestList.findIndex(g => g.id === currentGuest.id);
+    if (existingIndex >= 0) {
+      // 更新
+      setGuestList(prev => prev.map(g => g.id === currentGuest.id ? currentGuest : g));
+    } else {
+      // 新增
+      setGuestList(prev => [...prev, currentGuest]);
+    }
+    
+    setCurrentGuest(null);
+    setIsEditing(false);
+  };
+
+  const handleComplete = () => {
+    if (guestList.length === 0) {
+      Alert.alert('提示', '请至少添加一位入住人');
+      return;
+    }
+    
     // 返回上一页并传递入住人信息
-    router.back();
-    // 使用全局状态或事件来传递数据
-    // 这里简化处理，实际应用中可以使用 Context 或状态管理库
     if (router.canGoBack()) {
-      // 数据会通过导航参数传递
+      // 传递入住人列表数据
+      const mainGuest = guestList[0];
       (router as any).setParams?.({
-        guestName: guestInfo.name,
-        guestPhone: guestInfo.phone,
-        guestIdType: guestInfo.idType,
-        guestIdNumber: guestInfo.idNumber,
+        guestName: mainGuest.name,
+        guestPhone: mainGuest.phone,
+        guestIdType: mainGuest.idType,
+        guestIdNumber: mainGuest.idNumber,
+        guestListData: JSON.stringify(guestList),
       });
     }
+    router.back();
   };
 
   return (
@@ -119,27 +167,8 @@ export default function GuestInfoScreen() {
         </TouchableOpacity>
       </View>
 
-      {showEmpty ? (
-        /* 空状态 */
-        <View style={styles.emptyContainer}>
-          <View style={styles.emptyIcon}>
-            <Text style={styles.emptyIconText}>📁</Text>
-          </View>
-          <Text style={styles.emptyText}>暂无入住人</Text>
-
-          <View style={styles.buttonGroup}>
-            <TouchableOpacity style={styles.actionButton} onPress={handlePhotoUpload}>
-              <Text style={styles.actionButtonIcon}>📷</Text>
-              <Text style={styles.actionButtonText}>拍照/上传</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton} onPress={handleManualAdd}>
-              <Text style={styles.actionButtonIcon}>➕</Text>
-              <Text style={styles.actionButtonText}>手动添加</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : (
-        /* 表单 */
+      {isEditing && currentGuest ? (
+        /* 编辑表单 */
         <ScrollView style={styles.content}>
           <View style={styles.form}>
             {/* 姓名 */}
@@ -149,8 +178,8 @@ export default function GuestInfoScreen() {
                 style={styles.formInput}
                 placeholder="请输入姓名(必填)"
                 placeholderTextColor="#ccc"
-                value={guestInfo.name}
-                onChangeText={(text) => setGuestInfo({ ...guestInfo, name: text })}
+                value={currentGuest.name}
+                onChangeText={(text) => setCurrentGuest({ ...currentGuest, name: text })}
               />
             </View>
 
@@ -162,8 +191,8 @@ export default function GuestInfoScreen() {
                 placeholder="请输入手机号"
                 placeholderTextColor="#ccc"
                 keyboardType="phone-pad"
-                value={guestInfo.phone}
-                onChangeText={(text) => setGuestInfo({ ...guestInfo, phone: text })}
+                value={currentGuest.phone}
+                onChangeText={(text) => setCurrentGuest({ ...currentGuest, phone: text })}
               />
             </View>
 
@@ -171,7 +200,7 @@ export default function GuestInfoScreen() {
             <TouchableOpacity style={styles.formRow} onPress={handleIdTypeSelect}>
               <Text style={styles.formLabel}>证件类型</Text>
               <View style={styles.formRight}>
-                <Text style={styles.formValue}>{guestInfo.idType}</Text>
+                <Text style={styles.formValue}>{currentGuest.idType}</Text>
                 <Text style={styles.arrow}>›</Text>
               </View>
             </TouchableOpacity>
@@ -183,19 +212,72 @@ export default function GuestInfoScreen() {
                 style={styles.formInput}
                 placeholder="请输入证件号"
                 placeholderTextColor="#ccc"
-                value={guestInfo.idNumber}
-                onChangeText={(text) => setGuestInfo({ ...guestInfo, idNumber: text })}
+                value={currentGuest.idNumber}
+                onChangeText={(text) => setCurrentGuest({ ...currentGuest, idNumber: text })}
               />
             </View>
           </View>
 
-          {/* 删除按钮 */}
-          {isEdit && (
-            <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-              <Text style={styles.deleteIcon}>🗑</Text>
-              <Text style={styles.deleteText}>删除</Text>
+          {/* 保存和取消按钮 */}
+          <View style={styles.buttonRow}>
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.cancelActionButton]} 
+              onPress={() => {
+                setCurrentGuest(null);
+                setIsEditing(false);
+              }}
+            >
+              <Text style={styles.cancelActionButtonText}>取消</Text>
             </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.saveActionButton]} 
+              onPress={handleSaveGuest}
+            >
+              <Text style={styles.saveActionButtonText}>保存</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      ) : (
+        /* 入住人列表 */
+        <ScrollView style={styles.content}>
+          {guestList.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIcon}>
+                <Text style={styles.emptyIconText}>📁</Text>
+              </View>
+              <Text style={styles.emptyText}>暂无入住人</Text>
+            </View>
+          ) : (
+            guestList.map((guest, index) => (
+              <View key={guest.id} style={styles.guestCard}>
+                <View style={styles.guestHeader}>
+                  <Text style={styles.guestTitle}>入住人 {index + 1}</Text>
+                  <View style={styles.guestActions}>
+                    <TouchableOpacity onPress={() => handleEditGuest(guest)}>
+                      <Text style={styles.editIcon}>✏️</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDeleteGuest(guest.id)}>
+                      <Text style={styles.deleteIcon}>🗑️</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <View style={styles.guestInfo}>
+                  <Text style={styles.guestInfoText}>姓名：{guest.name}</Text>
+                  <Text style={styles.guestInfoText}>手机：{guest.phone}</Text>
+                  <Text style={styles.guestInfoText}>证件类型：{guest.idType}</Text>
+                  {guest.idNumber && (
+                    <Text style={styles.guestInfoText}>证件号：{guest.idNumber}</Text>
+                  )}
+                </View>
+              </View>
+            ))
           )}
+          
+          {/* 添加入住人按钮 */}
+          <TouchableOpacity style={styles.addGuestButton} onPress={handleAddGuest}>
+            <Text style={styles.addGuestIcon}>➕</Text>
+            <Text style={styles.addGuestText}>添加入住人</Text>
+          </TouchableOpacity>
         </ScrollView>
       )}
     </View>
@@ -339,6 +421,87 @@ const styles = StyleSheet.create({
   deleteText: {
     fontSize: 16,
     color: '#ff4d4f',
+  },
+  guestCard: {
+    backgroundColor: '#fff',
+    marginHorizontal: 15,
+    marginTop: 15,
+    borderRadius: 8,
+    padding: 15,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  guestHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  guestTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  guestActions: {
+    flexDirection: 'row',
+    gap: 15,
+  },
+  editIcon: {
+    fontSize: 18,
+  },
+  guestInfo: {
+    gap: 8,
+  },
+  guestInfoText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  addGuestButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    marginHorizontal: 15,
+    marginTop: 15,
+    marginBottom: 30,
+    paddingVertical: 15,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#1890ff',
+    borderStyle: 'dashed',
+  },
+  addGuestIcon: {
+    fontSize: 20,
+    marginRight: 8,
+    color: '#1890ff',
+  },
+  addGuestText: {
+    fontSize: 16,
+    color: '#1890ff',
+    fontWeight: '500',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 15,
+    marginHorizontal: 15,
+    marginTop: 20,
+  },
+  cancelActionButton: {
+    flex: 1,
+    backgroundColor: '#f0f0f0',
+  },
+  saveActionButton: {
+    flex: 1,
+    backgroundColor: '#1890ff',
+  },
+  cancelActionButtonText: {
+    color: '#666',
+  },
+  saveActionButtonText: {
+    color: '#fff',
   },
 });
 
