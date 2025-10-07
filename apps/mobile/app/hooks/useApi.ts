@@ -1,6 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '../services/api'
+import { api as remoteApi } from '../services/api'
+import { localDataService } from '../services/localDataService'
 import { cacheStorage } from '../services/storage'
+import { isLocalDataSource } from '../config/dataSource'
+
+// 根据配置自动选择数据源
+const api = isLocalDataSource() ? localDataService : remoteApi
+
+// 打印当前使用的数据源
+console.log(`📊 数据源: ${isLocalDataSource() ? '本地存储' : '远程API'}`)
 
 // Query Keys
 export const QUERY_KEYS = {
@@ -18,16 +26,7 @@ export const useRooms = () => {
   return useQuery({
     queryKey: [QUERY_KEYS.ROOMS],
     queryFn: api.rooms.getAll,
-    staleTime: 5 * 60 * 1000, // 5分钟
-    onSuccess: (data) => {
-      // 缓存到本地存储
-      cacheStorage.saveRooms(data)
-    },
-    initialData: async () => {
-      // 从缓存加载初始数据
-      const cached = await cacheStorage.getRooms()
-      return cached || []
-    },
+    staleTime: Infinity, // 本地数据不过期
   })
 }
 
@@ -77,14 +76,7 @@ export const useReservations = (params?: { startDate?: string; endDate?: string;
   return useQuery({
     queryKey: [QUERY_KEYS.RESERVATIONS, params],
     queryFn: () => api.reservations.getAll(params),
-    staleTime: 3 * 60 * 1000, // 3分钟
-    onSuccess: (data) => {
-      cacheStorage.saveReservations(data)
-    },
-    initialData: async () => {
-      const cached = await cacheStorage.getReservations()
-      return cached || []
-    },
+    staleTime: Infinity, // 本地数据不过期
   })
 }
 
@@ -166,11 +158,8 @@ export const useRoomStatus = (startDate: string, endDate: string) => {
   return useQuery({
     queryKey: [QUERY_KEYS.ROOM_STATUS, startDate, endDate],
     queryFn: () => api.roomStatus.getByDateRange(startDate, endDate),
-    staleTime: 2 * 60 * 1000, // 2分钟
+    staleTime: Infinity, // 本地数据不过期
     enabled: !!startDate && !!endDate,
-    onSuccess: (data) => {
-      cacheStorage.saveRoomStatuses(data)
-    },
   })
 }
 
@@ -224,8 +213,8 @@ export const useDashboard = () => {
   return useQuery({
     queryKey: [QUERY_KEYS.DASHBOARD],
     queryFn: api.statistics.getDashboard,
-    staleTime: 5 * 60 * 1000, // 5分钟
-    refetchInterval: 5 * 60 * 1000, // 每5分钟自动刷新
+    staleTime: 30 * 1000, // 本地数据30秒刷新一次
+    refetchInterval: 30 * 1000, // 每30秒自动刷新
   })
 }
 
