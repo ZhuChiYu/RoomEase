@@ -8,7 +8,7 @@ import * as Sharing from 'expo-sharing'
 import * as DocumentPicker from 'expo-document-picker'
 import { Alert } from 'react-native'
 import { storage, persistedStorage } from './storage'
-import type { Room, Reservation, RoomStatusData } from '../store/types'
+import type { Room, Reservation, RoomStatusData, OperationLog } from '../store/types'
 
 export interface BackupData {
   version: string
@@ -17,6 +17,7 @@ export interface BackupData {
     rooms: Room[]
     reservations: Reservation[]
     roomStatuses: RoomStatusData[]
+    operationLogs?: OperationLog[]
   }
   metadata: {
     totalRooms: number
@@ -62,6 +63,7 @@ export const exportData = async (options?: {
         rooms: includeRooms ? calendar.rooms : [],
         reservations: includeReservations ? calendar.reservations : [],
         roomStatuses: includeRoomStatuses ? calendar.roomStatuses : [],
+        operationLogs: calendar.operationLogs || [],
       },
       metadata: {
         totalRooms: includeRooms ? calendar.rooms.length : 0,
@@ -174,6 +176,7 @@ export const applyImportedData = (
   rooms: Room[]
   reservations: Reservation[]
   roomStatuses: RoomStatusData[]
+  operationLogs: OperationLog[]
 } => {
   console.log(`🔄 应用导入数据 (模式: ${mode})...`)
   
@@ -183,6 +186,7 @@ export const applyImportedData = (
     rooms: backupData.data.rooms,
     reservations: backupData.data.reservations,
     roomStatuses: backupData.data.roomStatuses,
+    operationLogs: backupData.data.operationLogs || [],
   }
 }
 
