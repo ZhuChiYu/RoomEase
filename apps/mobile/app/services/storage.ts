@@ -184,5 +184,39 @@ export const settingsStorage = {
   },
 }
 
+// Redux状态持久化
+export const persistedStorage = {
+  // 保存完整的Redux状态
+  saveState: async (state: any) => {
+    try {
+      await storage.setObject('redux_persisted_state', state)
+      await storage.setItem('last_persist_time', new Date().toISOString())
+    } catch (error) {
+      console.error('Error persisting state:', error)
+    }
+  },
+
+  // 获取持久化的Redux状态
+  getState: async (): Promise<any | null> => {
+    try {
+      return await storage.getObject('redux_persisted_state')
+    } catch (error) {
+      console.error('Error loading persisted state:', error)
+      return null
+    }
+  },
+
+  // 清除持久化状态
+  clearState: async () => {
+    await storage.removeItem('redux_persisted_state')
+    await storage.removeItem('last_persist_time')
+  },
+
+  // 获取最后持久化时间
+  getLastPersistTime: async (): Promise<string | null> => {
+    return await storage.getItem('last_persist_time')
+  },
+}
+
 export default storage
 
