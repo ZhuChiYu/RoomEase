@@ -164,6 +164,12 @@ importers:
       expo-constants:
         specifier: ~18.0.0
         version: 18.0.9(expo@54.0.12)(react-native@0.81.4)
+      expo-document-picker:
+        specifier: ~12.0.0
+        version: 12.0.2(expo@54.0.12)
+      expo-file-system:
+        specifier: ~19.0.0
+        version: 19.0.16(expo@54.0.12)(react-native@0.81.4)
       expo-font:
         specifier: ~14.0.0
         version: 14.0.8(expo@54.0.12)(react-native@0.81.4)(react@19.1.0)
@@ -185,6 +191,9 @@ importers:
       expo-router:
         specifier: ~6.0.0
         version: 6.0.10(@expo/metro-runtime@6.1.2)(@types/react@19.1.17)(expo-constants@18.0.9)(expo-linking@8.0.8)(expo@54.0.12)(react-dom@19.1.0)(react-native-gesture-handler@2.28.0)(react-native-reanimated@4.1.2)(react-native-safe-area-context@5.6.1)(react-native-screens@4.16.0)(react-native-web@0.21.1)(react-native@0.81.4)(react@19.1.0)
+      expo-sharing:
+        specifier: ~12.0.0
+        version: 12.0.1(expo@54.0.12)
       expo-splash-screen:
         specifier: ~31.0.10
         version: 31.0.10(expo@54.0.12)
@@ -13435,6 +13444,14 @@ packages:
       - supports-color
     dev: false
 
+  /expo-document-picker@12.0.2(expo@54.0.12):
+    resolution: {integrity: sha512-tmwuRWoCPv6SmNDSMEWcttMBJ95k8/g5sMWnHdmvOx0UKp0pFXP8FI+55HKtQpo6k2+118MkdDDhQSwKqASVAw==}
+    peerDependencies:
+      expo: '*'
+    dependencies:
+      expo: 54.0.12(@babel/core@7.28.4)(@expo/metro-runtime@6.1.2)(expo-router@6.0.10)(react-native@0.81.4)(react@19.1.0)
+    dev: false
+
   /expo-file-system@19.0.16(expo@54.0.12)(react-native@0.81.4):
     resolution: {integrity: sha512-9Ee6HpcUEfO7dOet/on9yAg7ysegBua35Q0oGrJzoRc+xW6IlTxoSFbmK8QhjA3MZpkukP3DhaiYENYOzkw9SQ==}
     peerDependencies:
@@ -13640,6 +13657,14 @@ packages:
   /expo-server@1.0.0:
     resolution: {integrity: sha512-fAAI0ZXxayc2Rt5KfQjULv+TFreuLRZ+hdpc5TxZJ7CDpW1ZIqaVzELHh1rYTRVEBDFDiCBXtioS9WWTEAX+fg==}
     engines: {node: '>=20.16.0'}
+    dev: false
+
+  /expo-sharing@12.0.1(expo@54.0.12):
+    resolution: {integrity: sha512-wBT+WeXwapj/9NWuLJO01vi9bdlchYu/Q/xD8slL/Ls4vVYku8CPqzkTtDFcjLrjtlJqyeHsdQXwKLvORmBIew==}
+    peerDependencies:
+      expo: '*'
+    dependencies:
+      expo: 54.0.12(@babel/core@7.28.4)(@expo/metro-runtime@6.1.2)(expo-router@6.0.10)(react-native@0.81.4)(react@19.1.0)
     dev: false
 
   /expo-splash-screen@31.0.10(expo@54.0.12):
