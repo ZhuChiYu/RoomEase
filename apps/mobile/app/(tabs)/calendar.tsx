@@ -34,9 +34,10 @@ interface DateData {
   rooms: {
     [roomId: string]: {
       status: 'available' | 'occupied' | 'dirty' | 'closed'
-  guestName?: string
-  guestPhone?: string
-}
+      guestName?: string
+      guestPhone?: string
+      channel?: string
+    }
   }
 }
 
@@ -139,7 +140,11 @@ export default function CalendarScreen() {
     for (let i = 0; i < 37; i++) {
       const date = new Date(startDate)
       date.setDate(startDate.getDate() + i)
-      const dateStr = date.toISOString().split('T')[0]
+      // 使用本地时间格式化日期，避免时区问题
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const dateStr = `${year}-${month}-${day}`
       
       // 为每个房间检查房态
       const rooms: DateData['rooms'] = {}
@@ -398,7 +403,7 @@ export default function CalendarScreen() {
     }
     
     // 没有预订，进入选择状态
-    const cellKey = `${roomId}-${dateIndex}`
+    const cellKey = `${roomId}|${dateIndex}`  // 使用 | 分隔符避免与房间ID中的 - 冲突
       setSelectedCells(prev => {
         const newSet = new Set(prev)
         if (newSet.has(cellKey)) {
@@ -408,6 +413,89 @@ export default function CalendarScreen() {
         }
         return newSet
       })
+  }
+
+  // 处理创建订单
+  const handleCreateOrder = () => {
+    if (selectedCells.size === 0) {
+      router.push('/create-order')
+      return
+    }
+
+    // 解析选中的房间和日期
+    const selectedRoomsData: Array<{
+      roomId: string
+      roomName: string
+      dateIndex: number
+      dateStr: string
+    }> = []
+
+    selectedCells.forEach(cellKey => {
+      const [roomId, dateIndexStr] = cellKey.split('|')  // 使用 | 分隔符
+      const dateIndex = parseInt(dateIndexStr)
+      const room = allRooms.find(r => r.id === roomId)
+      const dateData = dates[dateIndex]
+      
+      console.log('🔍 [Calendar] 解析cellKey:', { 
+        cellKey, 
+        roomId, 
+        dateIndex, 
+        dateStr: dateData?.dateStr,
+        foundRoom: !!room, 
+        foundDate: !!dateData,
+        startDate: startDate.toISOString().split('T')[0]
+      })
+      
+      if (room && dateData) {
+        selectedRoomsData.push({
+          roomId: room.id,
+          roomName: `${room.type}-${room.name}`,
+          dateIndex,
+          dateStr: dateData.dateStr
+        })
+      }
+    })
+
+    // 按房间分组，找出每个房间的入住和离店日期
+    const roomsMap = new Map<string, {
+      roomId: string
+      roomName: string
+      dates: string[]
+    }>()
+
+    selectedRoomsData.forEach(item => {
+      if (!roomsMap.has(item.roomId)) {
+        roomsMap.set(item.roomId, {
+          roomId: item.roomId,
+          roomName: item.roomName,
+          dates: []
+        })
+      }
+      roomsMap.get(item.roomId)!.dates.push(item.dateStr)
+    })
+
+    // 转换为数组并排序日期
+    const roomsInfo = Array.from(roomsMap.values()).map(room => {
+      const sortedDates = room.dates.sort()
+      return {
+        roomId: room.roomId,
+        roomName: room.roomName,
+        checkInDate: sortedDates[0],
+        checkOutDate: new Date(new Date(sortedDates[sortedDates.length - 1]).getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      }
+    })
+
+    console.log('📝 [Calendar] 选中的房间信息:', roomsInfo)
+
+    // 跳转到创建订单页面，传递多房间信息
+    router.push({
+      pathname: '/create-order',
+      params: {
+        roomsData: JSON.stringify(roomsInfo)
+      }
+    })
+    
+    setSelectedCells(new Set())
   }
 
   // 处理筛选按钮
@@ -444,7 +532,7 @@ export default function CalendarScreen() {
 
   // 判断单元格是否被选中
   const isCellSelected = (roomId: string, dateIndex: number) => {
-    return selectedCells.has(`${roomId}-${dateIndex}`)
+    return selectedCells.has(`${roomId}|${dateIndex}`)  // 使用 | 分隔符
   }
 
   // 判断是否是今天
@@ -801,14 +889,13 @@ export default function CalendarScreen() {
               <Text style={styles.actionButtonText}>关房</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.actionButton} onPress={() => {
-              router.push('/create-order')
-              setSelectedCells(new Set())
+              handleCreateOrder()
             }}>
               <Text style={styles.actionButtonText}>入住</Text>
                </TouchableOpacity>
                <TouchableOpacity
               style={[styles.actionButton, styles.primaryActionButton]}
-              onPress={() => router.push('/create-order')}
+              onPress={() => handleCreateOrder()}
                >
               <Text style={[styles.actionButtonText, styles.primaryActionText]}>新增</Text>
                </TouchableOpacity>
