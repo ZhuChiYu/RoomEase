@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
   View,
   Text,
@@ -10,9 +10,12 @@ import {
   ActionSheetIOS,
   Platform,
   StatusBar,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
 } from 'react-native'
 import { useRouter, useLocalSearchParams } from 'expo-router'
-import { useAppDispatch } from './store/hooks'
+import { useAppDispatch, useAppSelector } from './store/hooks'
 import { cancelReservation } from './store/calendarSlice'
 
 export default function OrderDetailsScreen() {
@@ -34,10 +37,52 @@ export default function OrderDetailsScreen() {
     totalAmount,
   } = params
 
-  const [orderStatus, setOrderStatus] = useState('进行中')
-  const [paidAmount, setPaidAmount] = useState(0)
-  const [otherFees, setOtherFees] = useState(0)
+  // 从Redux获取预订和支付数据
+  const reservations = useAppSelector(state => state.calendar.reservations)
+  const payments = useAppSelector(state => state.calendar.payments)
+  
+  // 查找当前订单
+  const currentReservation = useMemo(() => {
+    return reservations.find(r => r.orderId === orderId)
+  }, [reservations, orderId])
+  
+  // 计算支付金额和其他费用
+  const { paidAmount, otherFees } = useMemo(() => {
+    if (!currentReservation) {
+      return { paidAmount: 0, otherFees: 0 }
+    }
+    
+    // 从payments数组中筛选当前订单的支付记录（确保payments存在且为数组）
+    const orderPayments = (payments || []).filter(p => p.orderId === orderId)
+    
+    // 计算已支付金额（payment类型）
+    const paid = orderPayments
+      .filter(p => p.type === 'payment')
+      .reduce((sum: number, p) => sum + p.amount, 0)
+    
+    // 计算退款金额（refund类型）
+    const refunded = orderPayments
+      .filter(p => p.type === 'refund')
+      .reduce((sum: number, p) => sum + p.amount, 0)
+    
+    // 计算其他费用（otherFee类型）
+    const other = orderPayments
+      .filter(p => p.type === 'otherFee')
+      .reduce((sum: number, p) => sum + p.amount, 0)
+    
+    return {
+      paidAmount: paid - refunded,
+      otherFees: other
+    }
+  }, [currentReservation, payments, orderId])
+
+  const [orderStatus, setOrderStatus] = useState(currentReservation?.status || '进行中')
   const [menuVisible, setMenuVisible] = useState(false)
+  const [reminders, setReminders] = useState<Array<{id: string, content: string, time: string}>>([])
+  const [reminderModalVisible, setReminderModalVisible] = useState(false)
+  const [editingReminder, setEditingReminder] = useState<{id: string, content: string, time: string} | null>(null)
+  const [reminderContent, setReminderContent] = useState('')
+  const [reminderTime, setReminderTime] = useState('')
 
   const remainingAmount = Number(totalAmount) - paidAmount
   const totalReceivable = Number(totalAmount) + otherFees
@@ -131,6 +176,70 @@ export default function OrderDetailsScreen() {
     })
   }
 
+  // 添加提醒
+  const handleAddReminder = () => {
+    setEditingReminder(null)
+    setReminderContent('')
+    setReminderTime('')
+    setReminderModalVisible(true)
+  }
+
+  // 编辑提醒
+  const handleEditReminder = (reminder: {id: string, content: string, time: string}) => {
+    setEditingReminder(reminder)
+    setReminderContent(reminder.content)
+    setReminderTime(reminder.time)
+    setReminderModalVisible(true)
+  }
+
+  // 保存提醒
+  const handleSaveReminder = () => {
+    if (!reminderContent.trim()) {
+      Alert.alert('提示', '请输入提醒内容')
+      return
+    }
+
+    if (editingReminder) {
+      // 编辑现有提醒
+      setReminders(prev => prev.map(r => 
+        r.id === editingReminder.id 
+          ? { ...r, content: reminderContent, time: reminderTime || new Date().toLocaleString() }
+          : r
+      ))
+    } else {
+      // 添加新提醒
+      const newReminder = {
+        id: Date.now().toString(),
+        content: reminderContent,
+        time: reminderTime || new Date().toLocaleString(),
+      }
+      setReminders(prev => [...prev, newReminder])
+    }
+
+    setReminderModalVisible(false)
+    setEditingReminder(null)
+    setReminderContent('')
+    setReminderTime('')
+  }
+
+  // 删除提醒
+  const handleDeleteReminder = (reminderId: string) => {
+    Alert.alert(
+      '删除提醒',
+      '确定要删除这条提醒吗？',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: () => {
+            setReminders(prev => prev.filter(r => r.id !== reminderId))
+          }
+        }
+      ]
+    )
+  }
+
   return (
     <View style={styles.container}>
       {/* 自定义顶部栏 */}
@@ -160,7 +269,22 @@ export default function OrderDetailsScreen() {
               style={styles.menuItem}
               onPress={() => {
                 setMenuVisible(false)
-                Alert.alert('修改订单', '修改订单功能开发中')
+                router.push({
+                  pathname: '/edit-order',
+                  params: {
+                    orderId,
+                    guestName,
+                    guestPhone,
+                    channel,
+                    checkInDate,
+                    checkOutDate,
+                    roomType,
+                    roomPrice,
+                    guestCount,
+                    nights,
+                    totalAmount,
+                  }
+                })
               }}
             >
               <Text style={styles.menuItemText}>修改订单</Text>
@@ -215,16 +339,6 @@ export default function OrderDetailsScreen() {
               }}
             >
               <Text style={styles.menuItemText}>取消排房</Text>
-            </TouchableOpacity>
-            <View style={styles.menuDivider} />
-            <TouchableOpacity 
-              style={styles.menuItem}
-              onPress={() => {
-                setMenuVisible(false)
-                Alert.alert('移入单箱盒子', '移入单箱盒子功能开发中')
-              }}
-            >
-              <Text style={styles.menuItemText}>移入单箱盒子</Text>
             </TouchableOpacity>
           </View>
         </>
@@ -339,10 +453,31 @@ export default function OrderDetailsScreen() {
         <View style={styles.card}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>订单提醒</Text>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={handleAddReminder}>
               <Text style={styles.addButton}>⊕ 添加提醒</Text>
             </TouchableOpacity>
           </View>
+          
+          {reminders.length > 0 && (
+            <View style={styles.reminderList}>
+              {reminders.map(reminder => (
+                <View key={reminder.id} style={styles.reminderItem}>
+                  <View style={styles.reminderContent}>
+                    <Text style={styles.reminderText}>{reminder.content}</Text>
+                    <Text style={styles.reminderTime}>{reminder.time}</Text>
+                  </View>
+                  <View style={styles.reminderActions}>
+                    <TouchableOpacity onPress={() => handleEditReminder(reminder)}>
+                      <Text style={styles.reminderEditIcon}>✏️</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDeleteReminder(reminder.id)}>
+                      <Text style={styles.reminderDeleteIcon}>🗑️</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
 
@@ -355,6 +490,68 @@ export default function OrderDetailsScreen() {
           <Text style={styles.checkoutButtonText}>办理退房</Text>
         </TouchableOpacity>
       </View>
+
+      {/* 提醒编辑弹窗 */}
+      <Modal
+        visible={reminderModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReminderModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <TouchableOpacity 
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setReminderModalVisible(false)}
+          >
+            <TouchableOpacity 
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>
+                  {editingReminder ? '编辑提醒' : '添加提醒'}
+                </Text>
+                
+                <TextInput
+                  style={[styles.modalInput, styles.reminderTextArea]}
+                  value={reminderContent}
+                  onChangeText={setReminderContent}
+                  placeholder="请输入提醒内容"
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
+
+                <TextInput
+                  style={styles.modalInput}
+                  value={reminderTime}
+                  onChangeText={setReminderTime}
+                  placeholder="提醒时间（可选，如：2025-10-08 14:00）"
+                />
+
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.cancelButton]}
+                    onPress={() => setReminderModalVisible(false)}
+                  >
+                    <Text style={styles.cancelButtonText}>取消</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.confirmButton]}
+                    onPress={handleSaveReminder}
+                  >
+                    <Text style={styles.confirmButtonText}>保存</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   )
 }
@@ -633,6 +830,99 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: 'white',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 24,
+    width: '85%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 15,
+    marginBottom: 16,
+  },
+  reminderTextArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#f0f0f0',
+  },
+  confirmButton: {
+    backgroundColor: '#4a90e2',
+  },
+  cancelButtonText: {
+    fontSize: 15,
+    color: '#666',
+    fontWeight: '600',
+  },
+  confirmButtonText: {
+    fontSize: 15,
+    color: 'white',
+    fontWeight: '600',
+  },
+  reminderList: {
+    marginTop: 12,
+  },
+  reminderItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  reminderContent: {
+    flex: 1,
+  },
+  reminderText: {
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 4,
+  },
+  reminderTime: {
+    fontSize: 12,
+    color: '#999',
+  },
+  reminderActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginLeft: 12,
+  },
+  reminderEditIcon: {
+    fontSize: 18,
+  },
+  reminderDeleteIcon: {
+    fontSize: 18,
   },
 })
 
