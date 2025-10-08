@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { ThrottlerModule } from '@nestjs/throttler'
-import { GraphQLModule } from '@nestjs/graphql'
-import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo'
-import { join } from 'path'
+// import { GraphQLModule } from '@nestjs/graphql'
+// import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo'
+// import { join } from 'path'
 
 // 导入子模块
 import { AuthModule } from './modules/auth/auth.module'
@@ -47,24 +47,24 @@ import { DatabaseModule } from './services/database/database.module'
       },
     ]),
 
-    // GraphQL 模块
-    GraphQLModule.forRoot<ApolloDriverConfig>({
-      driver: ApolloDriver,
-      autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
-      sortSchema: true,
-      playground: process.env.NODE_ENV !== 'production',
-      introspection: true,
-      context: ({ req, res, connection }) => {
-        if (connection) {
-          return { req: connection.context, res }
-        }
-        return { req, res }
-      },
-      subscriptions: {
-        'graphql-ws': true,
-        'subscriptions-transport-ws': true,
-      },
-    }),
+    // GraphQL 模块 (暂时禁用)
+    // GraphQLModule.forRoot<ApolloDriverConfig>({
+    //   driver: ApolloDriver,
+    //   autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
+    //   sortSchema: true,
+    //   playground: process.env.NODE_ENV !== 'production',
+    //   introspection: true,
+    //   context: ({ req, res, connection }) => {
+    //     if (connection) {
+    //       return { req: connection.context, res }
+    //     }
+    //     return { req, res }
+    //   },
+    //   subscriptions: {
+    //     'graphql-ws': true,
+    //     'subscriptions-transport-ws': true,
+    //   },
+    // }),
 
     // 基础服务
     DatabaseModule,

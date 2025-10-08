@@ -1,3 +1,4 @@
+import 'tsconfig-paths/register'
 import { NestFactory } from '@nestjs/core'
 import { ValidationPipe } from '@nestjs/common'
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
@@ -71,10 +72,11 @@ async function bootstrap() {
 
   // 启动服务
   const port = configService.get('PORT') || 4000
-  await app.listen(port)
+  await app.listen(port, '0.0.0.0') // 监听所有网络接口，允许局域网访问
 
   console.log(`🚀 API Gateway 启动成功！`)
-  console.log(`📖 API 文档: http://localhost:${port}/docs`)
+  console.log(`📖 本地访问: http://localhost:${port}/docs`)
+  console.log(`📱 移动端访问: http://192.168.31.221:${port}/docs`)
   console.log(`🔗 GraphQL: http://localhost:${port}/graphql`)
   console.log(`💬 WebSocket: ws://localhost:${port}`)
 }

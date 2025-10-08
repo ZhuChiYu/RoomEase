@@ -2,10 +2,11 @@
   "$schema": "https://json.schemastore.org/nest-cli",
   "collection": "@nestjs/schematics",
   "sourceRoot": "src",
+  "entryFile": "main",
   "compilerOptions": {
     "deleteOutDir": true,
     "watchAssets": true,
     "assets": ["**/*.gql"],
-    "webpackConfigPath": "webpack.config.js"
+    "webpack": false
   }
 } 
