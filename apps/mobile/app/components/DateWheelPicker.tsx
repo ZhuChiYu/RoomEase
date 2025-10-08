@@ -156,7 +156,7 @@ export function DateWheelPicker({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="none"
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
@@ -201,8 +201,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingBottom: 40,
-    maxHeight: height * 0.6,
+    paddingBottom: 60,
+    minHeight: height * 0.65,
+    maxHeight: height * 0.8,
   },
   header: {
     flexDirection: 'row',

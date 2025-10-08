@@ -12,6 +12,8 @@ import * as Notifications from 'expo-notifications'
 import { notificationService, addNotificationResponseListener } from './services/notifications'
 import { initializeLocalData } from './services/localDataService'
 import { persistedStorage } from './services/storage'
+import { apiClient } from './services/apiClient'
+import { FEATURE_FLAGS } from './config/environment'
 
 // 禁用字体缩放，忽略系统字体大小设置
 // @ts-ignore - Text.defaultProps is not officially typed but works in React Native
@@ -73,7 +75,22 @@ export default function RootLayout() {
           console.log('ℹ️ 没有找到持久化状态，使用初始状态')
         }
         
-        // 3. 初始化推送通知
+        // 3. 如果使用后端API，自动登录
+        if (FEATURE_FLAGS.USE_BACKEND_API) {
+          console.log('🔐 使用后端API，自动登录中...')
+          try {
+            const loginResponse = await apiClient.login('admin@demo.com', '123456')
+            if (loginResponse.success) {
+              console.log('✅ 自动登录成功:', loginResponse.data)
+            } else {
+              console.warn('⚠️ 自动登录失败:', loginResponse.error)
+            }
+          } catch (loginError) {
+            console.error('❌ 自动登录错误:', loginError)
+          }
+        }
+        
+        // 4. 初始化推送通知
         console.log('🔔 初始化推送通知...')
         const hasPermission = await notificationService.requestPermissions()
         if (hasPermission) {
