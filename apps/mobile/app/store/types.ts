@@ -50,6 +50,7 @@ export interface Reservation {
   otherFees?: number
   payments?: Payment[]
   createdAt: string
+  propertyId?: string // 用于API调用的物业ID
 }
 
 export interface RoomStatusData {
