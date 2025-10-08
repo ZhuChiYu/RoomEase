@@ -260,7 +260,7 @@ export default function EditOrderScreen() {
       <Modal
         visible={channelModalVisible}
         transparent
-        animationType="slide"
+        animationType="none"
         onRequestClose={() => setChannelModalVisible(false)}
       >
         <TouchableOpacity 
@@ -295,7 +295,7 @@ export default function EditOrderScreen() {
       <Modal
         visible={roomModalVisible}
         transparent
-        animationType="slide"
+        animationType="none"
         onRequestClose={() => setRoomModalVisible(false)}
       >
         <TouchableOpacity 
@@ -330,7 +330,7 @@ export default function EditOrderScreen() {
       <Modal
         visible={priceModalVisible}
         transparent
-        animationType="slide"
+        animationType="none"
         onRequestClose={() => setPriceModalVisible(false)}
       >
         <KeyboardAvoidingView
@@ -349,7 +349,7 @@ export default function EditOrderScreen() {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView style={styles.priceModalContent} keyboardShouldPersistTaps="handled">
+              <View style={styles.priceModalContent}>
                 {/* 总价 */}
                 <View style={styles.priceRow}>
                   <Text style={styles.priceRowLabel}>总价</Text>
@@ -360,6 +360,7 @@ export default function EditOrderScreen() {
                       onChangeText={setEditingPrice}
                       keyboardType="decimal-pad"
                       placeholder="0.00"
+                      autoFocus
                     />
                     <Text style={styles.priceUnit}>元</Text>
                   </View>
@@ -372,19 +373,17 @@ export default function EditOrderScreen() {
                   const date = new Date(formData.checkInDate)
                   date.setDate(date.getDate() + i)
                   const dateStr = date.toISOString().split('T')[0]
-                  const dailyPrice = formData.roomPrice / nights
+                  const totalPrice = parseFloat(editingPrice) || 0
+                  const dailyPrice = nights > 0 ? totalPrice / nights : 0
                   
                   return (
                     <View key={i} style={styles.priceRow}>
                       <Text style={styles.priceRowLabel}>{dateStr}</Text>
-                      <View style={styles.priceInputContainer}>
-                        <Text style={styles.priceValue}>{dailyPrice.toFixed(2)}</Text>
-                        <Text style={styles.priceUnit}>元</Text>
-                      </View>
+                      <Text style={styles.priceValue}>{dailyPrice.toFixed(2)} 元</Text>
                     </View>
                   )
                 })}
-              </ScrollView>
+              </View>
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -529,7 +528,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
-    maxHeight: '70%',
+    paddingBottom: 0,
+    minHeight: '70%',
+    maxHeight: '85%',
   },
   modalTitle: {
     fontSize: 16,
@@ -555,10 +556,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   priceModalContainer: {
-    maxHeight: '80%',
+    minHeight: '65%',
     backgroundColor: 'white',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
+    paddingBottom: 0,
   },
   priceModalSheet: {
     flex: 1,

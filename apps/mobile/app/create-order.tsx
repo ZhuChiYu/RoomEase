@@ -17,6 +17,8 @@ import { DateWheelPicker } from './components/DateWheelPicker'
 import { useAppDispatch, useAppSelector } from './store/hooks'
 import { addReservation } from './store/calendarSlice'
 import type { Reservation } from './store/types'
+import { dataService } from './services'
+import { FEATURE_FLAGS } from './config/environment'
 
 // 获取本地日期字符串（YYYY-MM-DD），避免时区问题
 const getLocalDateString = (date: Date = new Date()): string => {
@@ -72,6 +74,15 @@ export default function CreateOrderScreen() {
   const [roomSelectModalVisible, setRoomSelectModalVisible] = useState(false)
   const [priceModalVisible, setPriceModalVisible] = useState(false)
   const [editingPrice, setEditingPrice] = useState('')
+  const [expandedRoomTypes, setExpandedRoomTypes] = useState<Set<string>>(new Set())
+  
+  // 当打开房间选择时，默认展开所有房型
+  useEffect(() => {
+    if (roomSelectModalVisible) {
+      const allTypes = new Set(allRooms.map(room => room.type))
+      setExpandedRoomTypes(allTypes)
+    }
+  }, [roomSelectModalVisible, allRooms])
 
   // 从路由参数初始化房间信息
   useEffect(() => {
@@ -192,6 +203,30 @@ export default function CreateOrderScreen() {
     setRoomSelectModalVisible(false)
   }
 
+  // 切换房型展开/折叠
+  const toggleRoomType = (roomType: string) => {
+    const newExpanded = new Set(expandedRoomTypes)
+    if (newExpanded.has(roomType)) {
+      newExpanded.delete(roomType)
+    } else {
+      newExpanded.add(roomType)
+    }
+    setExpandedRoomTypes(newExpanded)
+  }
+
+  // 按房型分组房间
+  const getRoomsByType = () => {
+    const grouped = new Map<string, typeof allRooms>()
+    allRooms.forEach(room => {
+      const type = room.type
+      if (!grouped.has(type)) {
+        grouped.set(type, [])
+      }
+      grouped.get(type)!.push(room)
+    })
+    return grouped
+  }
+
   // 打开房费编辑
   const handlePricePress = (roomIndex: number) => {
     setEditingRoomIndex(roomIndex)
@@ -224,7 +259,7 @@ export default function CreateOrderScreen() {
   }
 
   // 提交订单
-  const handleSubmitOrder = () => {
+  const handleSubmitOrder = async () => {
     if (!formData.guestName.trim()) {
       Alert.alert('提示', '请输入客人姓名')
       return
@@ -241,41 +276,60 @@ export default function CreateOrderScreen() {
     // 为每个房间创建预订
     const orderId = Date.now().toString()
     
-    rooms.forEach((room, index) => {
-      const reservationId = `RES_${orderId}_${index}`
-      const nights = calculateNights(room.checkInDate, room.checkOutDate)
-      
-      console.log('📝 [CreateOrder] 创建预订:', {
-        roomId: room.roomId,
-        roomName: room.roomName,
-        checkInDate: room.checkInDate,
-        checkOutDate: room.checkOutDate,
-        nights,
-      })
-      
-      const reservation: Reservation = {
-        id: reservationId,
-        orderId,
-        roomId: room.roomId,
-        roomNumber: room.roomId,
-        roomType: room.roomName,
-        guestName: formData.guestName,
-        guestPhone: formData.guestPhone,
-        guestIdType: formData.guestIdType,
-        guestIdNumber: formData.guestIdNumber,
-        channel: formData.channel,
-        checkInDate: room.checkInDate,
-        checkOutDate: room.checkOutDate,
-        roomPrice: room.price,
-        totalAmount: room.price,
-        nights,
-        status: 'confirmed',
-        createdAt: new Date().toISOString(),
+    try {
+      for (const [index, room] of rooms.entries()) {
+        const reservationId = `RES_${orderId}_${index}`
+        const nights = calculateNights(room.checkInDate, room.checkOutDate)
+        
+        console.log('📝 [CreateOrder] 创建预订:', {
+          roomId: room.roomId,
+          roomName: room.roomName,
+          checkInDate: room.checkInDate,
+          checkOutDate: room.checkOutDate,
+          nights,
+          usingAPI: FEATURE_FLAGS.USE_BACKEND_API
+        })
+        
+        const reservation: Reservation = {
+          id: reservationId,
+          orderId,
+          roomId: room.roomId,
+          roomNumber: room.roomId,
+          roomType: room.roomName,
+          guestName: formData.guestName,
+          guestPhone: formData.guestPhone,
+          guestIdType: formData.guestIdType,
+          guestIdNumber: formData.guestIdNumber,
+          channel: formData.channel,
+          checkInDate: room.checkInDate,
+          checkOutDate: room.checkOutDate,
+          roomPrice: room.price,
+          totalAmount: room.price,
+          nights,
+          status: 'confirmed',
+          createdAt: new Date().toISOString(),
+          propertyId: 'demo-property', // 添加propertyId用于API调用
+        }
+        
+        console.log('📝 [CreateOrder] 提交的预订对象:', reservation)
+        
+        // 使用dataService创建预订（会根据配置选择API或本地存储）
+        if (FEATURE_FLAGS.USE_BACKEND_API) {
+          console.log('🌐 [CreateOrder] 通过API创建预订...')
+          const createdReservation = await dataService.reservations.create(reservation)
+          console.log('✅ [CreateOrder] API返回:', createdReservation)
+          // API成功后也要更新本地Redux
+          dispatch(addReservation(createdReservation))
+        } else {
+          console.log('💾 [CreateOrder] 通过本地存储创建预订...')
+          dispatch(addReservation(reservation))
+        }
       }
-      
-      console.log('📝 [CreateOrder] 提交的预订对象:', reservation)
-      dispatch(addReservation(reservation))
-    })
+    } catch (error: any) {
+      console.error('❌ [CreateOrder] 创建预订失败:', error)
+      Alert.alert('错误', error.message || '创建预订失败')
+      return
+    }
 
     // 跳转到订单详情页（显示第一个房间的信息）
     const firstRoom = rooms[0]
@@ -482,7 +536,7 @@ export default function CreateOrderScreen() {
       <Modal
         visible={channelModalVisible}
         transparent
-        animationType="slide"
+        animationType="none"
         onRequestClose={() => setChannelModalVisible(false)}
       >
         <TouchableOpacity 
@@ -517,7 +571,7 @@ export default function CreateOrderScreen() {
       <Modal
         visible={roomSelectModalVisible}
         transparent
-        animationType="slide"
+        animationType="none"
         onRequestClose={() => setRoomSelectModalVisible(false)}
       >
         <TouchableOpacity 
@@ -525,22 +579,83 @@ export default function CreateOrderScreen() {
           activeOpacity={1}
           onPress={() => setRoomSelectModalVisible(false)}
         >
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>选择房间</Text>
-            <ScrollView style={styles.modalScrollView}>
-              {allRooms.map(room => (
-                <TouchableOpacity
-                  key={room.id}
-                  style={styles.modalOption}
-                  onPress={() => handleSelectRoom(room.id, room.name)}
+          <TouchableOpacity 
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.roomSelectSheet}>
+              {/* 标题栏 */}
+              <View style={styles.roomSelectHeader}>
+                <Text style={styles.roomSelectTitle}>选择房间</Text>
+                <TouchableOpacity 
+                  style={styles.roomSelectClose}
+                  onPress={() => setRoomSelectModalVisible(false)}
                 >
-                  <Text style={styles.modalOptionText}>
-                    {room.name} ({room.type})
-                  </Text>
+                  <Text style={styles.roomSelectCloseText}>✕</Text>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
+              </View>
+
+              {/* 房间列表 */}
+              <ScrollView 
+                style={styles.roomSelectContent}
+                contentContainerStyle={styles.roomSelectContentContainer}
+              >
+                {Array.from(getRoomsByType().entries()).map(([roomType, roomsOfType]) => (
+                  <View key={roomType}>
+                    {/* 房型标题（可折叠） */}
+                    <TouchableOpacity
+                      style={styles.roomTypeHeader}
+                      onPress={() => toggleRoomType(roomType)}
+                    >
+                      <Text style={styles.roomTypeTitle}>{roomType}</Text>
+                      <Text style={styles.roomTypeArrow}>
+                        {expandedRoomTypes.has(roomType) ? '∧' : '∨'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* 该房型下的房间列表 */}
+                    {expandedRoomTypes.has(roomType) && roomsOfType.map(room => {
+                      // TODO: 从Redux状态判断房间是否被占用
+                      const isOccupied = false // 暂时设为false，后续可以从Redux状态中获取
+                      const isSelected = editingRoomIndex !== null && rooms[editingRoomIndex]?.roomId === room.id
+                      
+                      return (
+                        <TouchableOpacity
+                          key={room.id}
+                          style={[
+                            styles.roomOption,
+                            isOccupied && styles.roomOptionDisabled
+                          ]}
+                          onPress={() => !isOccupied && handleSelectRoom(room.id, `${room.type}-${room.name}`)}
+                          disabled={isOccupied}
+                        >
+                          <Text style={[
+                            styles.roomOptionText,
+                            isOccupied && styles.roomOptionTextDisabled
+                          ]}>
+                            {room.name}
+                          </Text>
+                          
+                          <View style={styles.roomOptionRight}>
+                            {isOccupied && (
+                              <Text style={styles.roomOccupiedTag}>被占用</Text>
+                            )}
+                            <View style={[
+                              styles.roomRadio,
+                              isSelected && styles.roomRadioSelected,
+                              isOccupied && styles.roomRadioDisabled
+                            ]}>
+                              {isSelected && <View style={styles.roomRadioInner} />}
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
 
@@ -548,7 +663,7 @@ export default function CreateOrderScreen() {
       <Modal
         visible={priceModalVisible}
         transparent
-        animationType="slide"
+        animationType="none"
         onRequestClose={() => setPriceModalVisible(false)}
       >
         <KeyboardAvoidingView
@@ -576,6 +691,7 @@ export default function CreateOrderScreen() {
                 </View>
 
                 <View style={styles.priceModalContent}>
+                  {/* 总价输入 */}
                   <View style={styles.priceRow}>
                     <Text style={styles.priceRowLabel}>总价</Text>
                     <View style={styles.priceInputContainer}>
@@ -585,10 +701,43 @@ export default function CreateOrderScreen() {
                         onChangeText={setEditingPrice}
                         keyboardType="decimal-pad"
                         placeholder="0.00"
+                        autoFocus
                       />
                       <Text style={styles.priceUnit}>元</Text>
                     </View>
                   </View>
+
+                  {/* 每日价格提示 */}
+                  {editingRoomIndex !== null && (
+                    <>
+                      <Text style={styles.priceDailyTip}>以下为每个间夜价格</Text>
+                      {Array.from({ 
+                        length: calculateNights(
+                          rooms[editingRoomIndex].checkInDate, 
+                          rooms[editingRoomIndex].checkOutDate
+                        ) 
+                      }, (_, i) => {
+                        const date = new Date(rooms[editingRoomIndex].checkInDate)
+                        date.setDate(date.getDate() + i)
+                        const dateStr = date.toISOString().split('T')[0]
+                        const totalPrice = parseFloat(editingPrice) || 0
+                        const nights = calculateNights(
+                          rooms[editingRoomIndex].checkInDate, 
+                          rooms[editingRoomIndex].checkOutDate
+                        )
+                        const dailyPrice = nights > 0 ? totalPrice / nights : 0
+                        
+                        return (
+                          <View key={i} style={styles.priceDailyRow}>
+                            <Text style={styles.priceDailyDate}>{dateStr}</Text>
+                            <Text style={styles.priceDailyValue}>
+                              {dailyPrice.toFixed(2)} 元
+                            </Text>
+                          </View>
+                        )
+                      })}
+                    </>
+                  )}
                 </View>
               </View>
             </TouchableOpacity>
@@ -738,7 +887,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
-    maxHeight: '70%',
+    paddingBottom: 0,
+    minHeight: '70%',
+    maxHeight: '85%',
   },
   modalTitle: {
     fontSize: 16,
@@ -770,7 +921,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
-    maxHeight: 300,
+    paddingBottom: 0,
+    minHeight: '65%',
   },
   priceModalHeader: {
     flexDirection: 'row',
@@ -796,36 +948,179 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   priceModalContent: {
-    padding: 16,
+    padding: 20,
+    paddingBottom: 40,
+    backgroundColor: 'white',
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
   priceRowLabel: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#333',
+    fontWeight: '500',
   },
   priceInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   priceInput: {
-    fontSize: 16,
+    fontSize: 17,
     color: '#333',
     textAlign: 'right',
-    minWidth: 80,
-    paddingHorizontal: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 4,
-    paddingVertical: 4,
+    minWidth: 100,
+    paddingHorizontal: 0,
+    borderWidth: 0,
+    fontWeight: '500',
   },
   priceUnit: {
-    fontSize: 14,
+    fontSize: 15,
+    color: '#666',
+    marginLeft: 4,
+  },
+  priceDailyTip: {
+    fontSize: 13,
     color: '#999',
-    marginLeft: 8,
+    marginTop: 20,
+    marginBottom: 12,
+  },
+  priceDailyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f8f8f8',
+  },
+  priceDailyDate: {
+    fontSize: 14,
+    color: '#666',
+  },
+  priceDailyValue: {
+    fontSize: 14,
+    color: '#333',
+  },
+  // 房间选择样式
+  roomSelectSheet: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingBottom: 0,
+    minHeight: '80%',
+    maxHeight: '90%',
+  },
+  roomSelectHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    position: 'relative',
+  },
+  roomSelectTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#333',
+  },
+  roomSelectClose: {
+    position: 'absolute',
+    right: 20,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    padding: 8,
+  },
+  roomSelectCloseText: {
+    fontSize: 24,
+    color: '#999',
+    fontWeight: '300',
+  },
+  roomSelectContent: {
+    flex: 1,
+  },
+  roomSelectContentContainer: {
+    paddingBottom: 40,
+    backgroundColor: 'white',
+  },
+  roomTypeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    backgroundColor: '#fafafa',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  roomTypeTitle: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#333',
+  },
+  roomTypeArrow: {
+    fontSize: 16,
+    color: '#999',
+  },
+  roomOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f8f8f8',
+    backgroundColor: 'white',
+  },
+  roomOptionDisabled: {
+    backgroundColor: '#fafafa',
+  },
+  roomOptionText: {
+    fontSize: 15,
+    color: '#333',
+  },
+  roomOptionTextDisabled: {
+    color: '#ccc',
+  },
+  roomOptionRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  roomOccupiedTag: {
+    fontSize: 13,
+    color: '#999',
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  roomRadio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: '#ddd',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roomRadioSelected: {
+    borderColor: '#4a90e2',
+  },
+  roomRadioDisabled: {
+    borderColor: '#e0e0e0',
+  },
+  roomRadioInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#4a90e2',
   },
 })
