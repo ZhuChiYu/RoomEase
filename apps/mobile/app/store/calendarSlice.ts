@@ -162,6 +162,24 @@ const calendarSlice = createSlice({
       state.rooms = action.payload
     },
 
+    // 设置房间列表（从API加载）
+    setRooms: (state, action: PayloadAction<Room[]>) => {
+      console.log('🔄 [Redux] setRooms:', action.payload.length)
+      state.rooms = action.payload
+    },
+
+    // 设置预订列表（从API加载）
+    setReservations: (state, action: PayloadAction<Reservation[]>) => {
+      console.log('🔄 [Redux] setReservations:', action.payload.length)
+      state.reservations = action.payload
+    },
+
+    // 设置房态列表（从API加载）
+    setRoomStatuses: (state, action: PayloadAction<RoomStatusData[]>) => {
+      console.log('🔄 [Redux] setRoomStatuses:', action.payload.length)
+      state.roomStatuses = action.payload
+    },
+
     // 设置脏房状态
     setRoomDirty: (state, action: PayloadAction<{ roomId: string; date: string }>) => {
       const { roomId, date } = action.payload
@@ -299,6 +317,9 @@ export const {
   openRoom,
   addRoomType,
   updateRooms,
+  setRooms,
+  setReservations,
+  setRoomStatuses,
   setRoomDirty,
   clearRoomDirty,
   addOperationLog,
