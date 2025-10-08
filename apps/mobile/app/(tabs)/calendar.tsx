@@ -11,10 +11,14 @@ import {
   ActionSheetIOS,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { DateWheelPicker } from '../components/DateWheelPicker'
-import { useAppSelector } from '../store/hooks'
+import { useAppSelector, useAppDispatch } from '../store/hooks'
+import { FEATURE_FLAGS } from '../config/environment'
+import { dataService } from '../services'
+import { setRooms, setReservations, setRoomStatuses } from '../store/calendarSlice'
 
 const { width } = Dimensions.get('window')
 const CELL_WIDTH = 100
@@ -89,6 +93,7 @@ const getAvailableRooms = (dateData: DateData, rooms: Room[]): number => {
 
 export default function CalendarScreen() {
   const router = useRouter()
+  const dispatch = useAppDispatch()
   const dateHeaderScrollRef = useRef<ScrollView>(null)
   const contentScrollRef = useRef<ScrollView>(null)
   const isScrollingProgrammatically = useRef(false)
@@ -99,6 +104,10 @@ export default function CalendarScreen() {
   const reduxRooms = useAppSelector(state => state.calendar.rooms)
   const reduxReservations = useAppSelector(state => state.calendar.reservations)
   const reduxRoomStatuses = useAppSelector(state => state.calendar.roomStatuses)
+  
+  // 加载状态
+  const [isLoading, setIsLoading] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   
   // 按房型分组房间
   const roomsByType = useMemo(() => {
@@ -132,8 +141,20 @@ export default function CalendarScreen() {
       reservations: reduxReservations.length,
       roomStatuses: reduxRoomStatuses.length
     })
-    console.log('📅 [Calendar] 预订详情:', reduxReservations)
-    console.log('📅 [Calendar] 房态详情:', reduxRoomStatuses)
+    console.log('📅 [Calendar] 房间列表:', reduxRooms.map(r => ({ id: r.id, name: r.name, type: r.type })))
+    console.log('📅 [Calendar] 预订详情:', reduxReservations.map(r => ({ 
+      id: r.id, 
+      roomId: r.roomId, 
+      guestName: r.guestName,
+      checkInDate: r.checkInDate,
+      checkOutDate: r.checkOutDate
+    })))
+    console.log('📅 [Calendar] 房态详情:', reduxRoomStatuses.map(rs => ({
+      roomId: rs.roomId,
+      date: rs.date,
+      status: rs.status,
+      reservationId: rs.reservationId
+    })))
     
     const generatedDates: DateData[] = []
     
@@ -161,7 +182,6 @@ export default function CalendarScreen() {
             // 查找预订信息
             const reservation = reduxReservations.find(r => r.id === roomStatus.reservationId)
             if (reservation) {
-              console.log(`✅ [Calendar] 找到预订: ${dateStr} - 房间${room.id} - ${reservation.guestName}`)
               rooms[room.id] = {
                 status: 'occupied',
                 guestName: reservation.guestName,
@@ -169,7 +189,8 @@ export default function CalendarScreen() {
                 channel: reservation.channel,
               }
             } else {
-              console.log(`⚠️ [Calendar] 未找到预订信息: reservationId=${roomStatus.reservationId}`)
+              console.warn(`⚠️ [Calendar] 未找到预订: date=${dateStr}, roomId=${room.id}, reservationId=${roomStatus.reservationId}`)
+              console.warn(`⚠️ [Calendar] 可用预订IDs:`, reduxReservations.map(r => r.id))
             }
           } else {
             rooms[room.id] = {
@@ -192,6 +213,13 @@ export default function CalendarScreen() {
     }
     
     console.log('📅 [Calendar] 生成完成，共', generatedDates.length, '天')
+    
+    // 统计有预订的房间数
+    const occupiedCount = generatedDates.reduce((count, dateData) => {
+      return count + Object.values(dateData.rooms).filter(r => r.status === 'occupied').length
+    }, 0)
+    console.log('📅 [Calendar] 总预订房态数:', occupiedCount)
+    
     return generatedDates
   }, [startDate, reduxRooms, reduxReservations, reduxRoomStatuses])
   
@@ -328,6 +356,110 @@ export default function CalendarScreen() {
       scrollToCenter(7)
     }, 100)
   }
+
+  // 从API加载数据
+  const loadDataFromAPI = async (showLoading = true) => {
+    if (!FEATURE_FLAGS.USE_BACKEND_API) {
+      console.log('📅 [Calendar] 未启用后端API，跳过加载')
+      return
+    }
+
+    try {
+      if (showLoading) {
+        setIsLoading(true)
+      } else {
+        setIsRefreshing(true)
+      }
+      
+      console.log('📅 [Calendar] 开始从API加载数据...')
+      console.log('📅 [Calendar] 当前startDate:', startDate.toISOString().split('T')[0])
+      
+      // 计算日期范围（从startDate到37天后）
+      const endDate = new Date(startDate)
+      endDate.setDate(startDate.getDate() + 37)
+      
+      const startDateStr = startDate.toISOString().split('T')[0]
+      const endDateStr = endDate.toISOString().split('T')[0]
+      
+      console.log('📅 [Calendar] 加载日期范围:', { startDateStr, endDateStr })
+      
+      // 并行加载房间、预订和房态数据
+      const [rooms, reservations, roomStatuses] = await Promise.all([
+        dataService.rooms.getAll('demo-property'),
+        dataService.reservations.getAll({
+          startDate: startDateStr,
+          endDate: endDateStr,
+          propertyId: 'demo-property'
+        }),
+        dataService.roomStatus.getByDateRange(startDateStr, endDateStr, 'demo-property')
+      ])
+      
+      console.log('📅 [Calendar] ========== API返回数据详情 ==========')
+      console.log('📅 [Calendar] 房间数据:', rooms.length, '个')
+      rooms.forEach(room => {
+        console.log('  - 房间:', { id: room.id, name: room.name, type: room.type })
+      })
+      
+      console.log('📅 [Calendar] 预订数据:', reservations.length, '个')
+      reservations.forEach(reservation => {
+        console.log('  - 预订:', {
+          id: reservation.id,
+          roomId: reservation.roomId,
+          roomNumber: reservation.roomNumber,
+          guestName: reservation.guestName,
+          checkIn: reservation.checkInDate,
+          checkOut: reservation.checkOutDate,
+          status: reservation.status
+        })
+      })
+      
+      console.log('📅 [Calendar] 房态数据:', roomStatuses.length, '条')
+      const roomStatusGroups = roomStatuses.reduce((acc, rs) => {
+        if (!acc[rs.roomId]) acc[rs.roomId] = []
+        acc[rs.roomId].push(rs)
+        return acc
+      }, {} as Record<string, typeof roomStatuses>)
+      
+      Object.entries(roomStatusGroups).forEach(([roomId, statuses]) => {
+        console.log(`  - 房间${roomId}:`, statuses.length, '天房态')
+        statuses.slice(0, 3).forEach(s => {
+          console.log(`    ${s.date}: ${s.status}${s.reservationId ? ` (预订:${s.reservationId})` : ''}`)
+        })
+        if (statuses.length > 3) {
+          console.log(`    ...还有${statuses.length - 3}天`)
+        }
+      })
+      console.log('📅 [Calendar] ========================================')
+      
+      // 更新Redux状态
+      dispatch(setRooms(rooms))
+      dispatch(setReservations(reservations))
+      dispatch(setRoomStatuses(roomStatuses))
+      
+      console.log('✅ [Calendar] 数据加载完成，已更新到Redux')
+    } catch (error: any) {
+      console.error('❌ [Calendar] 加载数据失败:', error)
+      Alert.alert('错误', error.message || '加载数据失败')
+    } finally {
+      setIsLoading(false)
+      setIsRefreshing(false)
+    }
+  }
+  
+  // 刷新数据
+  const handleRefresh = async () => {
+    console.log('🔄 [Calendar] 用户触发刷新')
+    await loadDataFromAPI(false)
+  }
+  
+  // 初始加载数据
+  useEffect(() => {
+    if (FEATURE_FLAGS.USE_BACKEND_API) {
+      console.log('📅 [Calendar] 组件挂载，加载数据')
+      loadDataFromAPI(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // 只在组件挂载时执行一次
 
   // 回到今日
   const handleBackToToday = () => {
@@ -474,15 +606,53 @@ export default function CalendarScreen() {
       roomsMap.get(item.roomId)!.dates.push(item.dateStr)
     })
 
-    // 转换为数组并排序日期
-    const roomsInfo = Array.from(roomsMap.values()).map(room => {
+    // 转换为数组并处理日期连续性
+    const roomsInfo: Array<{
+      roomId: string
+      roomName: string
+      checkInDate: string
+      checkOutDate: string
+    }> = []
+
+    Array.from(roomsMap.values()).forEach(room => {
       const sortedDates = room.dates.sort()
-      return {
-        roomId: room.roomId,
-        roomName: room.roomName,
-        checkInDate: sortedDates[0],
-        checkOutDate: new Date(new Date(sortedDates[sortedDates.length - 1]).getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      }
+      
+      // 检测日期是否连续，如果不连续则分成多个预订
+      const dateGroups: string[][] = []
+      let currentGroup: string[] = []
+      
+      sortedDates.forEach((dateStr, index) => {
+        if (currentGroup.length === 0) {
+          currentGroup.push(dateStr)
+        } else {
+          const lastDate = new Date(currentGroup[currentGroup.length - 1])
+          const currentDate = new Date(dateStr)
+          const diffDays = Math.floor((currentDate.getTime() - lastDate.getTime()) / (24 * 60 * 60 * 1000))
+          
+          // 如果日期连续（相差1天），加入当前组；否则开始新组
+          if (diffDays === 1) {
+            currentGroup.push(dateStr)
+          } else {
+            dateGroups.push([...currentGroup])
+            currentGroup = [dateStr]
+          }
+        }
+        
+        // 最后一个日期，保存当前组
+        if (index === sortedDates.length - 1) {
+          dateGroups.push([...currentGroup])
+        }
+      })
+      
+      // 为每个连续的日期组创建一个预订
+      dateGroups.forEach(dateGroup => {
+        roomsInfo.push({
+          roomId: room.roomId,
+          roomName: room.roomName,
+          checkInDate: dateGroup[0],
+          checkOutDate: new Date(new Date(dateGroup[dateGroup.length - 1]).getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        })
+      })
     })
 
     console.log('📝 [Calendar] 选中的房间信息:', roomsInfo)
@@ -621,9 +791,17 @@ export default function CalendarScreen() {
                </TouchableOpacity>
           )}
         </View>
-        <TouchableOpacity style={styles.refreshBtn}>
-          <Text style={styles.refreshIcon}>🔄</Text>
-               </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.refreshBtn}
+          onPress={handleRefresh}
+          disabled={isRefreshing}
+        >
+          {isRefreshing ? (
+            <ActivityIndicator size="small" color="#4a90e2" />
+          ) : (
+            <Text style={styles.refreshIcon}>🔄</Text>
+          )}
+        </TouchableOpacity>
         <TouchableOpacity style={styles.filterBtn} onPress={handleFilterPress}>
           <Text style={styles.filterIcon}>☰</Text>
              </TouchableOpacity>
@@ -926,7 +1104,7 @@ export default function CalendarScreen() {
       <Modal
         visible={filterModalVisible}
         transparent
-        animationType="slide"
+        animationType="none"
         onRequestClose={() => setFilterModalVisible(false)}
       >
         <TouchableOpacity 
@@ -969,6 +1147,16 @@ export default function CalendarScreen() {
              </View>
         </TouchableOpacity>
        </Modal>
+
+      {/* 加载遮罩 */}
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#4a90e2" />
+            <Text style={styles.loadingText}>加载中...</Text>
+          </View>
+        </View>
+      )}
      </View>
    )
  }
@@ -1317,7 +1505,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
-    paddingBottom: 20,
+    paddingBottom: 40,
+    minHeight: '60%',
+    maxHeight: '75%',
   },
   filterTitle: {
     fontSize: 18,
@@ -1347,5 +1537,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#999',
     textAlign: 'center',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  loadingContainer: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#333',
   },
 })
