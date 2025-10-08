@@ -29,6 +29,106 @@ export type Permission =
   | 'billing.write'
   | '*'
 
+export type UserRole = 'OWNER' | 'MANAGER' | 'FRONTDESK' | 'CLEANING' | 'FINANCE'
+
+// 用户类型
+export interface User {
+  id: string
+  email: string
+  name: string
+  phone?: string
+  avatar?: string
+  role: UserRole
+  tenantId: string
+  createdAt: string
+  updatedAt: string
+}
+
+// 租户类型
+export interface Tenant {
+  id: string
+  name: string
+  slug: string
+  domain?: string
+  logo?: string
+  timezone: string
+  currency: string
+  language: string
+  createdAt: string
+  updatedAt: string
+}
+
+// 物业类型
+export interface Property {
+  id: string
+  name: string
+  description?: string
+  address: string
+  phone?: string
+  email?: string
+  timezone: string
+  currency: string
+  checkInTime: string
+  checkOutTime: string
+  tenantId: string
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+// 房间类型
+export interface Room {
+  id: string
+  name: string
+  code: string
+  description?: string
+  roomType: string
+  maxGuests: number
+  bedCount: number
+  bathroomCount: number
+  area?: number
+  floor?: number
+  amenities?: string[]
+  images?: string[]
+  basePrice: number
+  propertyId: string
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+// 预订状态
+export type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED' | 'NO_SHOW'
+
+// 预订类型
+export interface Reservation {
+  id: string
+  checkInDate: string
+  checkOutDate: string
+  guestCount: number
+  childCount: number
+  roomRate: number
+  totalAmount: number
+  paidAmount: number
+  currency: string
+  status: ReservationStatus
+  source?: string
+  sourceRef?: string
+  guestName: string
+  guestPhone?: string
+  guestEmail?: string
+  guestIdNumber?: string
+  guestAddress?: string
+  specialRequests?: string
+  notes?: string
+  tenantId: string
+  propertyId: string
+  roomId: string
+  userId?: string
+  createdAt: string
+  updatedAt: string
+}
+
 // 房态日历
 export interface CalendarDay {
   date: Date
@@ -45,22 +145,45 @@ export interface CalendarReservation {
   checkIn: Date
   checkOut: Date
   guestName: string
-  status: 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED'
+  status: ReservationStatus
 }
+
+// 日历覆盖（关房、特殊价格等）
+export interface CalendarOverride {
+  id: string
+  roomId: string
+  date: string
+  price?: number
+  minStay?: number
+  maxStay?: number
+  isBlocked: boolean
+  reason?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// 价格规则类型
+export type PriceRuleType = 'SEASONAL' | 'WEEKDAY' | 'WEEKEND' | 'HOLIDAY' | 'SPECIAL'
+export type PriceAdjustment = 'FIXED' | 'PERCENTAGE' | 'AMOUNT'
 
 // 价格规则
 export interface PriceRule {
   id: string
   name: string
-  type: 'SEASONAL' | 'WEEKDAY' | 'WEEKEND' | 'HOLIDAY' | 'SPECIAL'
-  adjustment: 'FIXED' | 'PERCENTAGE' | 'AMOUNT'
+  description?: string
+  type: PriceRuleType
+  priority: number
+  adjustment: PriceAdjustment
   value: number
-  startDate?: Date
-  endDate?: Date
+  startDate?: string
+  endDate?: string
   weekdays?: number[]
   minStay?: number
   maxStay?: number
+  propertyId: string
   isActive: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 // OCR 识别结果
@@ -74,6 +197,21 @@ export interface OcrResult {
     idType?: string
   }
   rawData?: any
+}
+
+// 客人身份信息
+export interface GuestIdentity {
+  id: string
+  name: string
+  idType: string
+  idNumber: string
+  address?: string
+  nationality?: string
+  ocrConfidence?: number
+  ocrRawData?: any
+  reservationId: string
+  createdAt: string
+  updatedAt: string
 }
 
 // WebSocket 消息类型
@@ -95,10 +233,40 @@ export interface AnalyticsKPI {
   uniqueRoomsBooked: number
 }
 
+export interface DashboardStats {
+  totalRooms: number
+  occupiedRooms: number
+  availableRooms: number
+  occupancyRate: number
+  todayCheckIns: number
+  todayCheckOuts: number
+  totalRevenue: number
+  paidRevenue: number
+  monthlyReservations: number
+}
+
+export interface OccupancyTrend {
+  date: string
+  occupiedRooms: number
+  totalRooms: number
+  occupancyRate: number
+}
+
+export interface RevenueStats {
+  year: number
+  month: number
+  totalRevenue: number
+  paidRevenue: number
+  unpaidRevenue: number
+  totalReservations: number
+  averageRevenue: number
+}
+
 export interface ChannelPerformance {
   channel: string
   reservations: number
   revenue: number
+  cancelled: number
   cancellationRate: number
 }
 
@@ -116,4 +284,54 @@ export interface FileUpload {
   filename: string
   mimeType: string
   size: number
-} 
+}
+
+// 订阅计划
+export type SubscriptionPlan = 'FREE' | 'STARTER' | 'PRO' | 'ENTERPRISE'
+export type SubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'CANCELLED' | 'EXPIRED'
+export type BillingCycle = 'MONTHLY' | 'YEARLY'
+export type SubscriptionFeature = 
+  | 'CALENDAR_MANAGEMENT'
+  | 'RESERVATION_MANAGEMENT'
+  | 'CHANNEL_SYNC'
+  | 'PRICE_RULES'
+  | 'OCR_RECOGNITION'
+  | 'ANALYTICS'
+  | 'API_ACCESS'
+  | 'WHITE_LABEL'
+  | 'PRIORITY_SUPPORT'
+
+// 订阅信息
+export interface Subscription {
+  id: string
+  plan: SubscriptionPlan
+  status: SubscriptionStatus
+  billingCycle: BillingCycle
+  amount: number
+  currency: string
+  startDate: string
+  endDate?: string
+  trialEndDate?: string
+  maxProperties: number
+  maxRooms: number
+  maxSmsPerMonth: number
+  features: SubscriptionFeature[]
+  tenantId: string
+  createdAt: string
+  updatedAt: string
+}
+
+// 审计日志
+export interface AuditLog {
+  id: string
+  action: string
+  resource: string
+  resourceId: string
+  oldValues?: any
+  newValues?: any
+  userId?: string
+  userIp?: string
+  userAgent?: string
+  tenantId: string
+  createdAt: string
+}

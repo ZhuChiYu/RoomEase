@@ -199,12 +199,12 @@ export const objectUtils = {
       
       if (sourceValue && typeof sourceValue === 'object' && !Array.isArray(sourceValue)) {
         if (targetValue && typeof targetValue === 'object' && !Array.isArray(targetValue)) {
-          result[key] = objectUtils.deepMerge(targetValue, sourceValue)
+          result[key] = objectUtils.deepMerge(targetValue, sourceValue) as any
         } else {
-          result[key] = sourceValue
+          result[key] = sourceValue as any
         }
       } else {
-        result[key] = sourceValue as T[Extract<keyof T, string>]
+        result[key] = sourceValue as any
       }
     }
     
