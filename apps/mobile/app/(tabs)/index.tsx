@@ -401,7 +401,7 @@ export default function HomeScreen() {
             {userInfo.name ? ` ${userInfo.name}` : ''}
           </Text>
           <Text style={styles.subtitle}>
-            {userInfo.hotelName || 'RoomEase管理系统'}
+            {userInfo.hotelName || '客满云酒店民宿管理系统'}
           </Text>
         </View>
 
@@ -517,6 +517,7 @@ export default function HomeScreen() {
                     router.push({
                       pathname: '/order-details',
                       params: {
+                        reservationId: reservation.id, // 传递预订ID
                         orderId: reservation.orderId,
                         guestName: reservation.guestName,
                         guestPhone: reservation.guestPhone,

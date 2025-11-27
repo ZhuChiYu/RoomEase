@@ -515,6 +515,7 @@ export default function CalendarScreen() {
         router.push({
           pathname: '/order-details',
           params: {
+            reservationId: reservation.id, // 传递预订ID
             orderId: reservation.orderId,
             guestName: reservation.guestName,
             guestPhone: reservation.guestPhone,
