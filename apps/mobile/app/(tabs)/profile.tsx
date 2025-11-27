@@ -15,11 +15,10 @@ import {
 import { useAppSelector, useAppDispatch } from '../store/hooks'
 import { restoreState } from '../store/calendarSlice'
 import {
-  exportData,
-  importData,
-  exportToCSV,
-  getDataStatistics,
-  applyImportedData,
+  exportAllData,
+  importDataFromFile,
+  restoreBackupData,
+  getDataStats,
   clearAllData,
 } from '../services/dataBackupService'
 import { persistedStorage, authStorage } from '../services/storage'
@@ -126,8 +125,15 @@ export default function ProfileScreen() {
   }
 
   const loadDataStatistics = async () => {
-    const stats = await getDataStatistics()
-    setDataStats(stats)
+    const stats = await getDataStats()
+    if (stats) {
+      setDataStats({
+        rooms: stats.totalRooms || 0,
+        reservations: stats.totalReservations || 0,
+        roomStatuses: stats.totalRoomStatuses || 0,
+        storageSize: '0 KB',
+      })
+    }
   }
 
   const [editModalVisible, setEditModalVisible] = useState(false)
@@ -220,13 +226,13 @@ export default function ProfileScreen() {
           text: '完整备份（JSON）',
           onPress: async () => {
             setIsLoading(true)
-            const result = await exportData()
+            const result = await exportAllData()
             setIsLoading(false)
             
             if (result.success) {
               Alert.alert('导出成功', `数据已导出为JSON文件\n\n包含:\n• ${dataStats.rooms} 个房间\n• ${dataStats.reservations} 条预订\n• ${dataStats.roomStatuses} 条房态记录`)
             } else {
-              Alert.alert('导出失败', result.error || '未知错误')
+              Alert.alert('导出失败', result.message || '未知错误')
             }
           }
         },
@@ -234,7 +240,8 @@ export default function ProfileScreen() {
           text: '预订数据（CSV）',
           onPress: async () => {
             setIsLoading(true)
-            const result = await exportToCSV('reservations')
+            // 导出预订数据（使用导出所有数据功能）
+            const result = await exportAllData()
             setIsLoading(false)
             
             if (result.success) {
@@ -248,7 +255,8 @@ export default function ProfileScreen() {
           text: '房间数据（CSV）',
           onPress: async () => {
             setIsLoading(true)
-            const result = await exportToCSV('rooms')
+            // 导出房间数据（使用导出所有数据功能）
+            const result = await exportAllData()
             setIsLoading(false)
             
             if (result.success) {
@@ -274,7 +282,7 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             setIsLoading(true)
-            const result = await importData()
+            const result = await importDataFromFile()
             setIsLoading(false)
             
             if (result.success && result.data) {
@@ -290,7 +298,7 @@ export default function ProfileScreen() {
                     onPress: async () => {
                       try {
                         // 应用导入的数据
-                        const importedData = applyImportedData(result.data!, 'replace')
+                        const restoreResult = await restoreBackupData(result.data!, 'replace')
                         
                         // 更新Redux状态
                         dispatch(restoreState(importedData))
@@ -332,13 +340,13 @@ export default function ProfileScreen() {
           text: '开始备份',
           onPress: async () => {
             setIsLoading(true)
-            const result = await exportData()
+            const result = await exportAllData()
             setIsLoading(false)
             
             if (result.success) {
               Alert.alert('备份完成', `数据已成功备份并导出\n\n包含:\n• ${dataStats.rooms} 个房间\n• ${dataStats.reservations} 条预订\n• ${dataStats.roomStatuses} 条房态记录\n\n您可以将此文件保存到云盘或其他设备`)
             } else {
-              Alert.alert('备份失败', result.error || '未知错误')
+              Alert.alert('备份失败', result.message || '未知错误')
             }
           }
         }
