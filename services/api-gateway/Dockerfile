@@ -30,31 +30,36 @@ RUN pnpm build
 # Production stage
 FROM node:20-alpine AS production
 
-# Install pnpm
-RUN npm install -g pnpm@8.15.0
+# Install pnpm and openssl (needed for Prisma)
+RUN npm install -g pnpm@8.15.0 && apk add --no-cache openssl
 
 WORKDIR /app
 
 # Copy workspace configuration
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 
-# Copy built packages
+# Copy package.json files first
 COPY --from=builder /app/packages/database/package.json ./packages/database/
-COPY --from=builder /app/packages/database/dist ./packages/database/dist
-COPY --from=builder /app/packages/database/node_modules/.prisma ./packages/database/node_modules/.prisma
-COPY --from=builder /app/packages/database/prisma ./packages/database/prisma
-
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/
+COPY --from=builder /app/services/api-gateway/package.json ./services/api-gateway/
+
+# Install production dependencies (this will install Prisma CLI)
+RUN pnpm install --prod --frozen-lockfile
+
+# Copy built packages
+COPY --from=builder /app/packages/database/dist ./packages/database/dist
+COPY --from=builder /app/packages/database/prisma ./packages/database/prisma
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 
-# Copy API Gateway
-COPY --from=builder /app/services/api-gateway/package.json ./services/api-gateway/
+# Copy API Gateway dist
 COPY --from=builder /app/services/api-gateway/dist ./services/api-gateway/dist
-COPY --from=builder /app/services/api-gateway/node_modules ./services/api-gateway/node_modules
 
-# Install only production dependencies
+# Generate Prisma Client in production stage
+WORKDIR /app/packages/database
+RUN pnpm prisma generate
+
+# Set working directory to API Gateway
 WORKDIR /app/services/api-gateway
-RUN pnpm install --prod --frozen-lockfile
 
 # Expose port
 EXPOSE 4000
