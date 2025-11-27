@@ -11,7 +11,7 @@ import {
   Platform,
   StatusBar,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useAppDispatch, useAppSelector } from './store/hooks';
 import { saveRoomType, deleteRoomType as deleteRoomTypeAction, addRoomsToType, deleteRoom } from './store/calendarSlice';
 import type { RoomType } from './store/types';
@@ -50,19 +50,29 @@ export default function EditRoomTypeScreen() {
   // 组合显示：已保存的房间 + 待保存的新房间
   const currentRooms = useMemo(() => {
     const rooms = [...savedRooms];
+    const existingIds = new Set(rooms.map(r => r.id));
+    
     // 添加待保存的新房间（临时对象，仅用于显示）
-    pendingNewRooms.forEach(roomName => {
+    // 使用唯一ID避免key冲突
+    pendingNewRooms.forEach((roomName, index) => {
+      // 如果房间名已存在于已保存的房间中，跳过
+      if (existingIds.has(roomName)) {
+        console.log('⚠️ [EditRoomType] 房间已存在，跳过:', roomName);
+        return;
+      }
+      
       rooms.push({
-        id: roomName,
+        id: `pending_${roomName}_${index}`, // 使用唯一ID
         name: roomName,
         type: formData.name as RoomType,
       });
     });
+    
     console.log('🔄 [EditRoomType] currentRooms重新计算:', {
       savedRoomsCount: savedRooms.length,
       pendingNewRoomsCount: pendingNewRooms.length,
       totalCount: rooms.length,
-      rooms: rooms.map(r => r.name)
+      rooms: rooms.map(r => ({ id: r.id, name: r.name }))
     });
     return rooms;
   }, [savedRooms, pendingNewRooms, formData.name]);
@@ -88,6 +98,12 @@ export default function EditRoomTypeScreen() {
     // 使用时间戳作为唯一标识，用于跟踪返回的数据
     const sessionId = Date.now().toString();
     
+    console.log('➡️ [EditRoomType] 准备跳转到add-rooms:', {
+      sessionId,
+      roomTypeName: formData.name,
+      currentRoomsCount: currentRooms.length
+    });
+    
     router.push({
       pathname: '/add-rooms',
       params: {
@@ -109,11 +125,13 @@ export default function EditRoomTypeScreen() {
           text: '删除',
           style: 'destructive',
           onPress: () => {
-            // 检查是否是待保存的房间
-            if (pendingNewRooms.includes(roomId)) {
+            // 检查是否是待保存的房间（ID以 pending_ 开头）
+            if (roomId.startsWith('pending_')) {
+              // 从ID中提取房间名: pending_1234_0 -> 1234
+              const roomName = roomId.split('_')[1];
               // 从待保存列表中移除
-              setPendingNewRooms(prev => prev.filter(id => id !== roomId));
-              console.log('🗑️ [EditRoomType] 从待保存列表删除房间:', roomId);
+              setPendingNewRooms(prev => prev.filter(name => name !== roomName));
+              console.log('🗑️ [EditRoomType] 从待保存列表删除房间:', roomName);
             } else {
               // 从Redux删除已保存的房间
               dispatch(deleteRoom(roomId));
@@ -207,39 +225,49 @@ export default function EditRoomTypeScreen() {
     ]);
   };
 
-  // 监听从add-rooms页面返回的数据
-  useEffect(() => {
-    console.log('🔍 [EditRoomType] params变化:', {
-      hasNewRooms: !!params.newRooms,
-      newRoomsValue: params.newRooms,
-      timestamp: params._timestamp,
-      allParams: params
-    });
-    
-    if (params.newRooms) {
-      try {
-        const newRoomNames = JSON.parse(params.newRooms as string);
-        console.log('📝 [EditRoomType] 解析到的新房间:', newRoomNames);
+  // 使用useFocusEffect监听页面获得焦点（从add-rooms返回时）
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('👀 [EditRoomType] 页面获得焦点');
+      
+      // 页面获得焦点时检查全局状态
+      if (typeof global !== 'undefined' && (global as any).pendingNewRooms) {
+        const pending = (global as any).pendingNewRooms;
         
-        if (newRoomNames && newRoomNames.length > 0) {
-          // 暂存到待保存列表，不立即添加到Redux
+        console.log('🔍 [EditRoomType] 检查全局状态:', {
+          hasPending: true,
+          pendingSessionId: pending.sessionId,
+          rooms: pending.rooms,
+          roomsCount: pending.rooms?.length
+        });
+        
+        // 只要全局状态有数据就处理（不检查sessionId，因为router.back()会改变params）
+        if (pending.rooms && pending.rooms.length > 0) {
+          console.log('📝 [EditRoomType] 从全局状态获取新房间:', pending.rooms);
+          
           setPendingNewRooms(prev => {
-            const combined = [...prev, ...newRoomNames];
+            const combined = [...prev, ...pending.rooms];
             // 去重
             const uniqueRooms = Array.from(new Set(combined));
             console.log('✅ [EditRoomType] 更新pendingNewRooms:', {
               previous: prev,
-              new: newRoomNames,
+              new: pending.rooms,
               result: uniqueRooms
             });
             return uniqueRooms;
           });
+          
+          // 清除全局状态
+          delete (global as any).pendingNewRooms;
+          console.log('🧹 [EditRoomType] 已清除全局状态');
+        } else {
+          console.log('⏭️ [EditRoomType] 没有房间数据，跳过');
         }
-      } catch (error) {
-        console.error('❌ [EditRoomType] 解析新增房间失败:', error);
+      } else {
+        console.log('📭 [EditRoomType] 全局状态为空');
       }
-    }
-  }, [params.newRooms, params._timestamp]); // 监听时间戳确保每次都触发
+    }, []) // 不依赖任何参数，每次获得焦点都检查
+  );
 
   return (
     <View style={styles.container}>

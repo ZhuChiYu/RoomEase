@@ -64,28 +64,33 @@ export default function AddRoomsScreen() {
     // 真正的保存会在上一页点击"完成"时进行
     console.log('📝 [AddRooms] 返回房间列表:', allNewRooms);
     
+    // 保存数据到全局状态（使用sessionStorage的替代方案）
+    const sessionId = params.sessionId || 'default-session';
+    const pendingData = {
+      rooms: allNewRooms,
+      timestamp: Date.now(),
+      sessionId: sessionId
+    };
+    
+    if (typeof global !== 'undefined') {
+      (global as any).pendingNewRooms = pendingData;
+      console.log('✅ [AddRooms] 保存到全局状态:', {
+        rooms: allNewRooms,
+        roomsCount: allNewRooms.length,
+        sessionId: sessionId,
+        globalState: (global as any).pendingNewRooms
+      });
+    } else {
+      console.error('❌ [AddRooms] global 不可用！');
+    }
+    
     Alert.alert('成功', `已添加 ${allNewRooms.length} 个房间`, [
       {
         text: '确定',
         onPress: () => {
-          // 返回到上一页并传递房间数据
-          const returnTo = params.returnTo || 'edit-room-type';
-          const sessionId = params.sessionId;
-          
-          console.log('✅ [AddRooms] 返回并传递参数:', {
-            returnTo,
-            sessionId,
-            roomsCount: allNewRooms.length
-          });
-          
-          router.replace({
-            pathname: `/${returnTo}`,
-            params: {
-              ...params,
-              newRooms: JSON.stringify(allNewRooms),
-              _timestamp: Date.now().toString(), // 添加时间戳确保参数更新
-            }
-          });
+          console.log('🔙 [AddRooms] 准备返回，当前全局状态:', (global as any).pendingNewRooms);
+          // 直接返回，不使用replace，避免重置页面state
+          router.back();
         },
       },
     ]);
