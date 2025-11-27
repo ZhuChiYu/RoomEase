@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "RoomEase Mobile",
-    "slug": "roomease-mobile",
+    "name": "KemanCloud",
+    "slug": "kemancloud-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,22 +16,35 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.roomease.mobile"
+      "bundleIdentifier": "com.kemancloud.mobile",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "RoomEase需要访问相机以扫描证件",
+        "NSPhotoLibraryUsageDescription": "RoomEase需要访问相册以保存和选择图片",
+        "NSPhotoLibraryAddUsageDescription": "RoomEase需要保存图片到相册"
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.roomease.mobile",
+      "package": "com.kemancloud.mobile",
+      "versionCode": 1,
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO"
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
     },
     "plugins": [
       "expo-router",
@@ -39,20 +52,34 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#6366f1",
-          "sounds": ["./assets/notification-sound.wav"]
+          "color": "#6366f1"
         }
-      ]
+      ],
+      [
+        "expo-document-picker",
+        {
+          "iCloudContainerEnvironment": "Production"
+        }
+      ],
+      "expo-camera",
+      "expo-file-system"
     ],
-    "scheme": "roomease",
+    "scheme": "kemancloud",
+    "owner": "kemancloud",
     "extra": {
       "router": {
         "origin": false
       },
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "your-project-id-here"
       },
-      "apiUrl": "http://localhost:3000"
+      "apiUrl": "http://192.168.31.221:4000"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
     }
   }
 }
