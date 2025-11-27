@@ -213,9 +213,18 @@ export const localReservationsService = {
   },
 
   cancel: async (id: string): Promise<Reservation> => {
+    console.log('🗑️ [LocalService] 取消预订, ID:', id)
     const reservations = await storage.getObject<Reservation[]>(LOCAL_DATA_KEYS.RESERVATIONS) || []
+    console.log('📋 [LocalService] 所有预订数量:', reservations.length)
+    console.log('📋 [LocalService] 所有预订IDs:', reservations.map(r => ({ id: r.id, orderId: r.orderId })))
+    
     const index = reservations.findIndex(r => r.id === id)
-    if (index === -1) throw new Error('Reservation not found')
+    console.log('🔍 [LocalService] 查找结果 index:', index)
+    
+    if (index === -1) {
+      console.error('❌ [LocalService] 未找到预订, 查找ID:', id)
+      throw new Error('Reservation not found')
+    }
     
     reservations[index].status = 'cancelled'
     await storage.setObject(LOCAL_DATA_KEYS.RESERVATIONS, reservations)
@@ -226,6 +235,27 @@ export const localReservationsService = {
     await storage.setObject(LOCAL_DATA_KEYS.ROOM_STATUSES, filtered)
     
     return reservations[index]
+  },
+
+  delete: async (id: string): Promise<void> => {
+    console.log('🗑️ [LocalService] 删除预订, ID:', id)
+    const reservations = await storage.getObject<Reservation[]>(LOCAL_DATA_KEYS.RESERVATIONS) || []
+    const index = reservations.findIndex(r => r.id === id)
+    
+    if (index === -1) {
+      throw new Error('Reservation not found')
+    }
+    
+    // 删除预订
+    const filtered = reservations.filter(r => r.id !== id)
+    await storage.setObject(LOCAL_DATA_KEYS.RESERVATIONS, filtered)
+    
+    // 删除相关房态记录
+    const statuses = await storage.getObject<RoomStatusData[]>(LOCAL_DATA_KEYS.ROOM_STATUSES) || []
+    const filteredStatuses = statuses.filter(s => s.reservationId !== id)
+    await storage.setObject(LOCAL_DATA_KEYS.ROOM_STATUSES, filteredStatuses)
+    
+    console.log('✅ [LocalService] 预订已删除')
   },
 
   checkIn: async (id: string): Promise<Reservation> => {
