@@ -1,0 +1,68 @@
+# Multi-stage build for NestJS API Gateway
+FROM node:20-alpine AS builder
+
+# Install pnpm
+RUN npm install -g pnpm@8.15.0
+
+# Set working directory
+WORKDIR /app
+
+# Copy workspace files
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY packages ./packages
+COPY services/api-gateway ./services/api-gateway
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Build packages
+WORKDIR /app/packages/database
+RUN pnpm prisma generate
+RUN pnpm build
+
+WORKDIR /app/packages/shared
+RUN pnpm build
+
+# Build API Gateway
+WORKDIR /app/services/api-gateway
+RUN pnpm build
+
+# Production stage
+FROM node:20-alpine AS production
+
+# Install pnpm
+RUN npm install -g pnpm@8.15.0
+
+WORKDIR /app
+
+# Copy workspace configuration
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+
+# Copy built packages
+COPY --from=builder /app/packages/database/package.json ./packages/database/
+COPY --from=builder /app/packages/database/dist ./packages/database/dist
+COPY --from=builder /app/packages/database/node_modules/.prisma ./packages/database/node_modules/.prisma
+COPY --from=builder /app/packages/database/prisma ./packages/database/prisma
+
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+
+# Copy API Gateway
+COPY --from=builder /app/services/api-gateway/package.json ./services/api-gateway/
+COPY --from=builder /app/services/api-gateway/dist ./services/api-gateway/dist
+COPY --from=builder /app/services/api-gateway/node_modules ./services/api-gateway/node_modules
+
+# Install only production dependencies
+WORKDIR /app/services/api-gateway
+RUN pnpm install --prod --frozen-lockfile
+
+# Expose port
+EXPOSE 4000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:4000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+# Start application
+CMD ["node", "dist/main.js"]
+

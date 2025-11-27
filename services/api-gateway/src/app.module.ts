@@ -15,6 +15,7 @@ import { CalendarModule } from './modules/calendar/calendar.module'
 import { PricingModule } from './modules/pricing/pricing.module'
 import { AnalyticsModule } from './modules/analytics/analytics.module'
 import { WebSocketModule } from './modules/websocket/websocket.module'
+import { HealthModule } from './modules/health/health.module'
 
 // 全局服务
 import { RedisModule } from './services/redis/redis.module'
@@ -69,6 +70,9 @@ import { DatabaseModule } from './services/database/database.module'
     // 基础服务
     DatabaseModule,
     RedisModule,
+
+    // 健康检查
+    HealthModule,
 
     // 业务模块
     AuthModule,

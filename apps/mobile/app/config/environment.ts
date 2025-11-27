@@ -15,7 +15,8 @@ export const API_CONFIG = {
   // API基础URL
   BASE_URL: isDev 
     ? 'http://192.168.31.221:4000' // 开发环境 - 使用局域网IP（移动设备无法访问localhost）
-    : 'https://api.roomease.com', // 生产环境
+    : 'http://111.230.110.95', // 生产环境 - 腾讯云服务器
+    // : 'https://www.englishpartner.cn', // 生产环境 - 使用域名（配置SSL后）
   
   // 备用API地址（如果主地址连接失败）
   FALLBACK_URL: 'http://localhost:4000',
