@@ -25,6 +25,7 @@ export default function OrderDetailsScreen() {
   
   const {
     orderId,
+    reservationId, // 新增：预订ID（优先使用）
     guestName,
     guestPhone,
     channel,
@@ -41,10 +42,16 @@ export default function OrderDetailsScreen() {
   const reservations = useAppSelector(state => state.calendar.reservations)
   const payments = useAppSelector(state => state.calendar.payments)
   
-  // 查找当前订单
+  // 查找当前订单（优先使用 reservationId，兼容旧代码使用 orderId）
   const currentReservation = useMemo(() => {
-    return reservations.find(r => r.orderId === orderId)
-  }, [reservations, orderId])
+    if (reservationId) {
+      // 如果有 reservationId，精确查找
+      return reservations.find(r => r.id === reservationId)
+    } else {
+      // 兼容旧代码：使用 orderId（可能返回错误的预订）
+      return reservations.find(r => r.orderId === orderId)
+    }
+  }, [reservations, orderId, reservationId])
   
   // 计算支付金额和其他费用
   const { paidAmount, otherFees } = useMemo(() => {
@@ -301,20 +308,47 @@ export default function OrderDetailsScreen() {
                     { text: '取消', style: 'cancel' },
                     { 
                       text: '确定', 
-                      onPress: () => {
-                        // 取消Redux中的预订
-                        const reservationId = `RES_${orderId}`
-                        dispatch(cancelReservation(reservationId))
-                        
-                        Alert.alert('已取消', '订单已取消', [
-                          {
-                            text: '确定',
-                            onPress: () => {
-                              // 跳转回房态日历页
-                              router.replace('/(tabs)/calendar')
-                            }
+                      onPress: async () => {
+                        try {
+                          console.log('🔍 开始取消预订...')
+                          console.log('📋 orderId:', orderId)
+                          console.log('📋 所有预订数量:', reservations.length)
+                          console.log('📋 currentReservation:', currentReservation)
+                          
+                          // 获取正确的reservation ID
+                          if (!currentReservation) {
+                            console.error('❌ 未找到预订信息')
+                            Alert.alert('错误', '未找到预订信息，可能预订尚未创建或已被删除')
+                            return
                           }
-                        ])
+                          
+                          const reservationId = currentReservation.id
+                          console.log('✅ 找到预订ID:', reservationId)
+                          
+                          // 取消Redux中的预订
+                          console.log('🔄 更新Redux状态...')
+                          dispatch(cancelReservation(reservationId))
+                          
+                          // 同时调用dataService更新持久化存储
+                          console.log('💾 持久化到本地存储...')
+                          const { dataService } = await import('./services/dataService')
+                          await dataService.reservations.cancel(reservationId)
+                          
+                          console.log('✅ 取消成功！')
+                          
+                          Alert.alert('已取消', '订单已取消', [
+                            {
+                              text: '确定',
+                              onPress: () => {
+                                // 跳转回房态日历页
+                                router.replace('/(tabs)/calendar')
+                              }
+                            }
+                          ])
+                        } catch (error: any) {
+                          console.error('取消预订失败:', error)
+                          Alert.alert('取消失败', error.message || '未知错误')
+                        }
                       }
                     }
                   ]

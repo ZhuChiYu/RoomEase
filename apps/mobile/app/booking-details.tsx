@@ -119,7 +119,35 @@ export default function BookingDetailsScreen() {
   const handleCancelBooking = () => {
     Alert.alert('取消预订', '确定要取消这个预订吗？此操作不可撤销。', [
       { text: '取消', style: 'cancel' },
-      { text: '确认取消', style: 'destructive', onPress: () => Alert.alert('已取消', '预订已取消') }
+      { 
+        text: '确认取消', 
+        style: 'destructive', 
+        onPress: async () => {
+          try {
+            // 从booking ID提取reservation ID
+            const reservationId = bookingInfo.id
+            
+            // 更新Redux状态
+            const { cancelReservation } = await import('./store/calendarSlice')
+            const { useAppDispatch } = await import('./store/hooks')
+            // dispatch(cancelReservation(reservationId))
+            
+            // 调用dataService更新持久化存储
+            const { dataService } = await import('./services/dataService')
+            await dataService.reservations.cancel(reservationId)
+            
+            Alert.alert('已取消', '预订已成功取消', [
+              {
+                text: '确定',
+                onPress: () => router.back()
+              }
+            ])
+          } catch (error: any) {
+            console.error('取消预订失败:', error)
+            Alert.alert('取消失败', error.message || '未知错误')
+          }
+        }
+      }
     ])
   }
 

@@ -12,7 +12,8 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { DateWheelPicker } from '../components/DateWheelPicker'
-import { useAppSelector } from '../store/hooks'
+import { useAppSelector, useAppDispatch } from '../store/hooks'
+import { deleteReservation } from '../store/calendarSlice'
 
 interface Reservation {
   id: string
@@ -28,9 +29,10 @@ interface Reservation {
 interface ReservationCardProps {
   reservation: Reservation
   onPress: (id: string) => void
+  onDelete: (id: string) => void
 }
 
-function ReservationCard({ reservation, onPress }: ReservationCardProps) {
+function ReservationCard({ reservation, onPress, onDelete }: ReservationCardProps) {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'confirmed':
@@ -105,9 +107,20 @@ function ReservationCard({ reservation, onPress }: ReservationCardProps) {
         <Text style={styles.totalAmount}>
           总金额: ¥{reservation.totalAmount.toLocaleString()}
         </Text>
-        <Text style={styles.reservationId}>
-          #{reservation.id}
-        </Text>
+        <View style={styles.cardActions}>
+          <Text style={styles.reservationId}>#{reservation.id}</Text>
+          {(reservation.status === 'cancelled' || reservation.status === 'checked_out') && (
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={(e) => {
+                e.stopPropagation()
+                onDelete(reservation.id)
+              }}
+            >
+              <Text style={styles.deleteButtonText}>删除</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </TouchableOpacity>
   )
@@ -115,6 +128,7 @@ function ReservationCard({ reservation, onPress }: ReservationCardProps) {
 
 export default function ReservationsScreen() {
   const router = useRouter()
+  const dispatch = useAppDispatch()
   const [searchText, setSearchText] = useState('')
   const [selectedFilter, setSelectedFilter] = useState('all')
   const [addModalVisible, setAddModalVisible] = useState(false)
@@ -161,7 +175,8 @@ export default function ReservationsScreen() {
     checkOut: r.checkOutDate,
     status: r.status === 'confirmed' ? 'confirmed' : 
             r.status === 'checked-in' ? 'checked_in' :
-            r.status === 'checked-out' ? 'checked_out' : 'pending',
+            r.status === 'checked-out' ? 'checked_out' :
+            r.status === 'cancelled' ? 'cancelled' : 'pending',
     totalAmount: r.totalAmount,
     guestPhone: r.guestPhone
   }))
@@ -210,6 +225,37 @@ export default function ReservationsScreen() {
     router.push(`/booking-details?id=${id}`)
   }
 
+  const handleDeleteReservation = async (id: string) => {
+    Alert.alert(
+      '删除预订',
+      '确定要删除这个预订吗？此操作不可撤销。',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('🗑️ 删除预订:', id)
+              
+              // 1. 从Redux删除
+              dispatch(deleteReservation(id))
+              
+              // 2. 从持久化存储删除
+              const { dataService } = await import('../services/dataService')
+              await dataService.reservations.delete(id)
+              
+              Alert.alert('成功', '预订已删除')
+            } catch (error: any) {
+              console.error('❌ 删除预订失败:', error)
+              Alert.alert('删除失败', error.message || '未知错误')
+            }
+          }
+        }
+      ]
+    )
+  }
+
   const handleAddReservation = () => {
     setAddModalVisible(true)
   }
@@ -249,6 +295,7 @@ export default function ReservationsScreen() {
     <ReservationCard
       reservation={item}
       onPress={handleReservationPress}
+      onDelete={handleDeleteReservation}
     />
   )
 
@@ -534,6 +581,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
+  },
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  deleteButton: {
+    backgroundColor: '#fee2e2',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  deleteButtonText: {
+    color: '#dc2626',
+    fontSize: 12,
+    fontWeight: '600',
     paddingTop: 12,
   },
   totalAmount: {

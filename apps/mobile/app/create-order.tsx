@@ -314,16 +314,12 @@ export default function CreateOrderScreen() {
         console.log('📝 [CreateOrder] 提交的预订对象:', reservation)
         
         // 使用dataService创建预订（会根据配置选择API或本地存储）
-        if (FEATURE_FLAGS.USE_BACKEND_API) {
-          console.log('🌐 [CreateOrder] 通过API创建预订...')
-          const createdReservation = await dataService.reservations.create(reservation)
-          console.log('✅ [CreateOrder] API返回:', createdReservation)
-          // API成功后也要更新本地Redux
-          dispatch(addReservation(createdReservation))
-        } else {
-          console.log('💾 [CreateOrder] 通过本地存储创建预订...')
-          dispatch(addReservation(reservation))
-        }
+        console.log('💾 [CreateOrder] 通过dataService创建预订...')
+        const createdReservation = await dataService.reservations.create(reservation)
+        console.log('✅ [CreateOrder] 预订创建成功:', createdReservation.id)
+        
+        // 更新Redux状态
+        dispatch(addReservation(createdReservation))
       }
     } catch (error: any) {
       console.error('❌ [CreateOrder] 创建预订失败:', error)
@@ -333,9 +329,11 @@ export default function CreateOrderScreen() {
 
     // 跳转到订单详情页（显示第一个房间的信息）
     const firstRoom = rooms[0]
+    const firstReservationId = `RES_${orderId}_0` // 第一个房间的预订ID
     router.replace({
       pathname: '/order-details',
       params: {
+        reservationId: firstReservationId, // 传递预订ID
         orderId,
         guestName: formData.guestName,
         guestPhone: formData.guestPhone,
@@ -1124,3 +1122,4 @@ const styles = StyleSheet.create({
     backgroundColor: '#4a90e2',
   },
 })
+
