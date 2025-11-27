@@ -111,6 +111,33 @@ const calendarSlice = createSlice({
       }
     },
 
+    // 删除预订
+    deleteReservation: (state, action: PayloadAction<string>) => {
+      const reservationId = action.payload
+      const reservation = state.reservations.find(r => r.id === reservationId)
+      
+      if (reservation) {
+        // 删除预订
+        state.reservations = state.reservations.filter(r => r.id !== reservationId)
+        
+        // 删除相关的房态记录
+        state.roomStatuses = state.roomStatuses.filter(
+          rs => rs.reservationId !== reservationId
+        )
+        
+        // 添加操作日志
+        const log: OperationLog = {
+          id: `${Date.now()}-delete`,
+          orderId: reservation.orderId,
+          action: '删除预订',
+          operator: '用户',
+          time: new Date().toLocaleString('zh-CN'),
+          details: `订单号：${reservation.orderId}\n客人：${reservation.guestName}\n房间：${reservation.roomType}`,
+        }
+        state.operationLogs.push(log)
+      }
+    },
+
     // 关房
     closeRoom: (state, action: PayloadAction<{ roomId: string; startDate: string; endDate: string; note?: string }>) => {
       const { roomId, startDate, endDate, note } = action.payload
@@ -313,6 +340,7 @@ const calendarSlice = createSlice({
 export const {
   addReservation,
   cancelReservation,
+  deleteReservation,
   closeRoom,
   openRoom,
   addRoomType,
