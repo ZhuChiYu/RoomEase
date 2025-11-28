@@ -21,7 +21,7 @@ export interface DeveloperModeConfig {
 export const getDeveloperModeConfig = async (): Promise<DeveloperModeConfig> => {
   const config = await storage.getObject<DeveloperModeConfig>(DEV_MODE_KEY)
   return config || {
-    useLocalStorage: true, // 默认使用本地存储（适合开发和演示）
+    useLocalStorage: false, // 默认使用服务器API（生产环境推荐）
     lastUpdated: new Date().toISOString(),
   }
 }
