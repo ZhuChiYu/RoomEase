@@ -13,10 +13,11 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
-import { authService } from '../services/authService'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function RegisterScreen() {
   const router = useRouter()
+  const { register } = useAuth()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -61,7 +62,8 @@ export default function RegisterScreen() {
     setIsLoading(true)
 
     try {
-      const result = await authService.register({
+      // 使用 AuthContext 的 register 方法
+      const result = await register({
         name: name.trim(),
         email: email.trim().toLowerCase(),
         password,
@@ -69,15 +71,8 @@ export default function RegisterScreen() {
       })
 
       if (result.success) {
-        Alert.alert('注册成功', '欢迎使用客满云！', [
-          {
-            text: '确定',
-            onPress: () => {
-              // 跳转到主页面
-              router.replace('/(tabs)')
-            },
-          },
-        ])
+        // AuthContext 会自动跳转，这里只显示提示
+        Alert.alert('注册成功', '欢迎使用客满云！')
       } else {
         Alert.alert('注册失败', result.error || '注册失败，请稍后重试')
       }

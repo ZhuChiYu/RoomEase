@@ -13,10 +13,11 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
-import { authService } from '../services/authService'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function LoginScreen() {
   const router = useRouter()
+  const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -38,21 +39,12 @@ export default function LoginScreen() {
     setIsLoading(true)
 
     try {
-      const result = await authService.login({
-        email: email.trim().toLowerCase(),
-        password,
-      })
+      // 使用 AuthContext 的 login 方法
+      const result = await login(email.trim().toLowerCase(), password)
 
       if (result.success) {
-        Alert.alert('登录成功', '欢迎回来！', [
-          {
-            text: '确定',
-            onPress: () => {
-              // 跳转到主页面
-              router.replace('/(tabs)')
-            },
-          },
-        ])
+        // AuthContext 会自动跳转，这里只显示提示
+        Alert.alert('登录成功', '欢迎回来！')
       } else {
         Alert.alert('登录失败', result.error || '登录失败，请检查用户名和密码')
       }
