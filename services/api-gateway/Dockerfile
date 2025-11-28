@@ -39,11 +39,16 @@ WORKDIR /app
 # Copy workspace configuration and lockfile
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 
-# Copy built packages
-COPY --from=builder /app/packages/database ./packages/database
-COPY --from=builder /app/packages/shared ./packages/shared
+# Copy built packages (only dist and package.json, not src)
+COPY --from=builder /app/packages/database/package.json ./packages/database/
+COPY --from=builder /app/packages/database/dist ./packages/database/dist
+COPY --from=builder /app/packages/database/prisma ./packages/database/prisma
+COPY --from=builder /app/packages/database/node_modules/.prisma ./packages/database/node_modules/.prisma
 
-# Copy API Gateway source and built files
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+
+# Copy API Gateway
 COPY --from=builder /app/services/api-gateway/package.json ./services/api-gateway/
 COPY --from=builder /app/services/api-gateway/dist ./services/api-gateway/dist
 
