@@ -45,7 +45,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
@@ -64,7 +64,7 @@ services:
     platform: linux/amd64
     container_name: roomease-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}
     volumes:
       - redis_data:/data
@@ -87,8 +87,8 @@ services:
       CLICKHOUSE_USER: default
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     ports:
-      - "8123:8123"
-      - "9000:9000"
+      - "8124:8123"
+      - "9003:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./scripts/init-clickhouse.sql:/docker-entrypoint-initdb.d/init.sql
@@ -115,8 +115,8 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rabbitmq123}
       RABBITMQ_DEFAULT_VHOST: roomease
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "5673:5672"
+      - "15673:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
@@ -137,8 +137,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}
     ports:
-      - "9001:9001"
-      - "9002:9002"
+      - "9004:9001"
+      - "9005:9002"
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001" --address ":9002"
