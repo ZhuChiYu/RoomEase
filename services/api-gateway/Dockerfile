@@ -43,7 +43,6 @@ COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY --from=builder /app/packages/database/package.json ./packages/database/
 COPY --from=builder /app/packages/database/dist ./packages/database/dist
 COPY --from=builder /app/packages/database/prisma ./packages/database/prisma
-COPY --from=builder /app/packages/database/node_modules/.prisma ./packages/database/node_modules/.prisma
 
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
@@ -54,6 +53,10 @@ COPY --from=builder /app/services/api-gateway/dist ./services/api-gateway/dist
 
 # Install production dependencies only
 RUN pnpm install --prod --frozen-lockfile
+
+# Generate Prisma client in production
+WORKDIR /app/packages/database
+RUN pnpm prisma generate
 
 # Set working directory to API Gateway
 WORKDIR /app/services/api-gateway
