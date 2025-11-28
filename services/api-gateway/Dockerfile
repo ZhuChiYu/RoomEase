@@ -35,8 +35,9 @@ RUN apk add --no-cache openssl
 
 WORKDIR /app
 
-# Copy workspace configuration
-COPY pnpm-workspace.yaml package.json ./
+# Copy workspace configuration and root node_modules (needed for pnpm workspace resolution)
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY --from=builder /app/node_modules ./node_modules
 
 # Copy built packages with their dependencies
 COPY --from=builder /app/packages/database/package.json ./packages/database/
