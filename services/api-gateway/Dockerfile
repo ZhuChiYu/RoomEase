@@ -30,22 +30,25 @@ RUN pnpm build
 # Production stage
 FROM node:20-alpine AS production
 
-# Install openssl (needed for Prisma)
-RUN apk add --no-cache openssl
+# Install openssl and pnpm (needed for Prisma and package management)
+RUN apk add --no-cache openssl && \
+    npm install -g pnpm@8.15.0
 
 WORKDIR /app
 
-# Copy workspace configuration
-COPY pnpm-workspace.yaml package.json ./
+# Copy workspace configuration and lockfile
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 
-# Copy packages with their node_modules and built files
+# Copy built packages
 COPY --from=builder /app/packages/database ./packages/database
 COPY --from=builder /app/packages/shared ./packages/shared
 
-# Copy API Gateway
+# Copy API Gateway source and built files
 COPY --from=builder /app/services/api-gateway/package.json ./services/api-gateway/
 COPY --from=builder /app/services/api-gateway/dist ./services/api-gateway/dist
-COPY --from=builder /app/services/api-gateway/node_modules ./services/api-gateway/node_modules
+
+# Install production dependencies only
+RUN pnpm install --prod --frozen-lockfile
 
 # Set working directory to API Gateway
 WORKDIR /app/services/api-gateway
