@@ -6,9 +6,11 @@ import {
   StyleSheet,
   TouchableOpacity,
   Dimensions,
+  RefreshControl,
 } from 'react-native';
 import { useAppSelector } from '../store/hooks';
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
+import { dataService } from '../services/dataService';
 
 const { width } = Dimensions.get('window');
 
@@ -17,10 +19,25 @@ type StatPeriod = 'day' | 'month' | 'year';
 export default function StatisticsScreen() {
   const [selectedPeriod, setSelectedPeriod] = useState<StatPeriod>('day');
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [refreshing, setRefreshing] = useState(false);
   
   // 从Redux获取预订数据
   const reservations = useAppSelector(state => state.calendar.reservations);
   const rooms = useAppSelector(state => state.calendar.rooms);
+
+  // 下拉刷新处理
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      console.log('🔄 [统计] 下拉刷新，清除缓存...');
+      await dataService.cache.clearAll();
+      console.log('✅ [统计] 缓存已清除，数据将从服务器重新加载');
+    } catch (error) {
+      console.error('❌ [统计] 刷新失败:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // 计算统计数据
   const statistics = useMemo(() => {
@@ -147,7 +164,17 @@ export default function StatisticsScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView 
+        style={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#4a90e2"
+            colors={['#4a90e2']}
+          />
+        }
+      >
         {/* 总览卡片 */}
         <View style={styles.overviewCard}>
           <View style={styles.overviewItem}>

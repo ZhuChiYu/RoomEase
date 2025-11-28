@@ -40,6 +40,27 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     })
 
+    // 确保用户有默认property（自动创建）
+    let defaultProperty = await this.prisma.property.findFirst({
+      where: { tenantId: user.tenantId },
+    })
+
+    if (!defaultProperty) {
+      // 自动创建默认property
+      defaultProperty = await this.prisma.property.create({
+        data: {
+          name: user.tenant.name || '默认物业',
+          address: '待补充',
+          tenantId: user.tenantId,
+          timezone: user.tenant.timezone || 'Asia/Shanghai',
+          currency: user.tenant.currency || 'CNY',
+          checkInTime: '15:00',
+          checkOutTime: '12:00',
+          isActive: true,
+        },
+      })
+    }
+
     // 生成令牌
     const tokens = await this.generateTokens(user.id, user.tenantId)
 
@@ -51,6 +72,8 @@ export class AuthService {
         email: user.email,
         name: user.name,
         role: user.role,
+        tenantId: user.tenantId,
+        propertyId: defaultProperty.id, // 返回默认propertyId
       },
     }
   }
@@ -117,6 +140,20 @@ export class AuthService {
       },
     })
 
+    // 创建默认property
+    const defaultProperty = await this.prisma.property.create({
+      data: {
+        name: hotelName || name + '的酒店',
+        address: '待补充',
+        tenantId: tenant.id,
+        timezone: tenant.timezone || 'Asia/Shanghai',
+        currency: tenant.currency || 'CNY',
+        checkInTime: '15:00',
+        checkOutTime: '12:00',
+        isActive: true,
+      },
+    })
+
     // 生成令牌
     const tokens = await this.generateTokens(user.id, tenant.id)
 
@@ -128,6 +165,8 @@ export class AuthService {
         email: user.email,
         name: user.name,
         role: user.role,
+        tenantId: tenant.id,
+        propertyId: defaultProperty.id, // 返回默认propertyId
       },
     }
   }

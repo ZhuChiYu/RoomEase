@@ -1,14 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api as remoteApi } from '../services/api'
-import { localDataService } from '../services/localDataService'
-import { cacheStorage } from '../services/storage'
-import { isLocalDataSource } from '../config/dataSource'
-
-// 根据配置自动选择数据源
-const api = isLocalDataSource() ? localDataService : remoteApi
+import { dataService as api } from '../services/dataService'
 
 // 打印当前使用的数据源
-console.log(`📊 数据源: ${isLocalDataSource() ? '本地存储' : '远程API'}`)
+console.log('📊 数据源: 云服务API (带缓存)')
 
 // Query Keys
 export const QUERY_KEYS = {
@@ -154,10 +148,10 @@ export const useCheckOut = () => {
 }
 
 // 房态相关Hooks
-export const useRoomStatus = (startDate: string, endDate: string) => {
+export const useRoomStatus = (startDate: string, endDate: string, propertyId: string = 'demo-property') => {
   return useQuery({
-    queryKey: [QUERY_KEYS.ROOM_STATUS, startDate, endDate],
-    queryFn: () => api.roomStatus.getByDateRange(startDate, endDate),
+    queryKey: [QUERY_KEYS.ROOM_STATUS, startDate, endDate, propertyId],
+    queryFn: () => api.roomStatus.getByDateRange(startDate, endDate, propertyId),
     staleTime: Infinity, // 本地数据不过期
     enabled: !!startDate && !!endDate,
   })

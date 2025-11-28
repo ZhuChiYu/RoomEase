@@ -8,6 +8,7 @@ import { api, logger } from './api'
 
 const TOKEN_KEY = '@auth_token'
 const USER_KEY = '@auth_user'
+const PROPERTY_ID_KEY = '@property_id'
 
 export interface User {
   id: string
@@ -15,6 +16,7 @@ export interface User {
   name: string
   role: string
   tenantId?: string
+  propertyId?: string
 }
 
 export interface LoginCredentials {
@@ -59,6 +61,12 @@ class AuthService {
         // 保存token和用户信息
         await this.saveAuthData(token, userData)
         
+        // 保存propertyId（如果有）
+        if (userData.propertyId) {
+          await AsyncStorage.setItem(PROPERTY_ID_KEY, userData.propertyId)
+          logger.log('✅ 已保存propertyId:', userData.propertyId)
+        }
+        
         logger.success('登录成功', { user: userData })
         
         return {
@@ -101,6 +109,12 @@ class AuthService {
       if (token && userData) {
         // 自动登录
         await this.saveAuthData(token, userData)
+        
+        // 保存propertyId（如果有）
+        if (userData.propertyId) {
+          await AsyncStorage.setItem(PROPERTY_ID_KEY, userData.propertyId)
+          logger.log('✅ 已保存propertyId:', userData.propertyId)
+        }
         
         logger.success('注册成功', { user: userData })
         
@@ -236,11 +250,24 @@ class AuthService {
     try {
       await AsyncStorage.removeItem(TOKEN_KEY)
       await AsyncStorage.removeItem(USER_KEY)
+      await AsyncStorage.removeItem(PROPERTY_ID_KEY)
       
       logger.log('认证数据已清除')
     } catch (error) {
       logger.error('清除认证数据失败', error)
       throw error
+    }
+  }
+
+  /**
+   * 获取propertyId
+   */
+  async getPropertyId(): Promise<string | null> {
+    try {
+      return await AsyncStorage.getItem(PROPERTY_ID_KEY)
+    } catch (error) {
+      logger.error('获取propertyId失败', error)
+      return null
     }
   }
 

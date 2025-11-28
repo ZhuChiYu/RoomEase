@@ -69,13 +69,6 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <TabBarIcon name="profile" color={color} />,
         }}
       />
-      <Tabs.Screen
-        name="developer"
-        options={{
-          title: '开发者',
-          tabBarIcon: ({ color }) => <TabBarIcon name="developer" color={color} />,
-        }}
-      />
     </Tabs>
   )
 } 

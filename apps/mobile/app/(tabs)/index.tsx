@@ -9,11 +9,13 @@ import {
   Alert,
   Modal,
   TextInput,
+  RefreshControl,
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { DateWheelPicker } from '../components/DateWheelPicker'
 import { useAppSelector } from '../store/hooks'
 import { authStorage } from '../services/storage'
+import { dataService } from '../services/dataService'
 
 const { width } = Dimensions.get('window')
 
@@ -108,6 +110,9 @@ export default function HomeScreen() {
     hotelName: '',
   })
 
+  // 下拉刷新状态
+  const [refreshing, setRefreshing] = useState(false)
+
   // 加载用户信息
   useEffect(() => {
     loadUserInfo()
@@ -120,6 +125,21 @@ export default function HomeScreen() {
         name: savedUserInfo.name || '',
         hotelName: savedUserInfo.hotelName || '',
       })
+    }
+  }
+
+  // 下拉刷新处理
+  const onRefresh = async () => {
+    setRefreshing(true)
+    try {
+      console.log('🔄 [首页] 下拉刷新，清除缓存...')
+      // 清除所有缓存
+      await dataService.cache.clearAll()
+      console.log('✅ [首页] 缓存已清除，数据将从服务器重新加载')
+    } catch (error) {
+      console.error('❌ [首页] 刷新失败:', error)
+    } finally {
+      setRefreshing(false)
     }
   }
 
@@ -393,7 +413,18 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollView}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false} 
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#4a90e2"
+            colors={['#4a90e2']}
+          />
+        }
+      >
         {/* 页面头部 */}
         <View style={styles.header}>
           <Text style={styles.greeting}>

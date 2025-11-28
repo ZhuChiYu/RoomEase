@@ -12,6 +12,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { DateWheelPicker } from '../components/DateWheelPicker'
@@ -136,25 +137,40 @@ export default function CalendarScreen() {
   // 根据Redux数据生成日期数据
   const dates = useMemo(() => {
     console.log('📅 [Calendar] 生成日期数据...')
+    
+    // 安全处理 Redux 数据（确保它们都是数组）
+    const safeRooms = Array.isArray(reduxRooms) ? reduxRooms : []
+    const safeReservations = Array.isArray(reduxReservations) ? reduxReservations : []
+    const safeRoomStatuses = Array.isArray(reduxRoomStatuses) ? reduxRoomStatuses : []
+    
     console.log('📅 [Calendar] Redux数据:', {
-      rooms: reduxRooms.length,
-      reservations: reduxReservations.length,
-      roomStatuses: reduxRoomStatuses.length
+      rooms: safeRooms.length,
+      reservations: safeReservations.length,
+      roomStatuses: safeRoomStatuses.length
     })
-    console.log('📅 [Calendar] 房间列表:', reduxRooms.map(r => ({ id: r.id, name: r.name, type: r.type })))
-    console.log('📅 [Calendar] 预订详情:', reduxReservations.map(r => ({ 
-      id: r.id, 
-      roomId: r.roomId, 
-      guestName: r.guestName,
-      checkInDate: r.checkInDate,
-      checkOutDate: r.checkOutDate
-    })))
-    console.log('📅 [Calendar] 房态详情:', reduxRoomStatuses.map(rs => ({
-      roomId: rs.roomId,
-      date: rs.date,
-      status: rs.status,
-      reservationId: rs.reservationId
-    })))
+    
+    if (safeRooms.length > 0) {
+      console.log('📅 [Calendar] 房间列表:', safeRooms.map(r => ({ id: r.id, name: r.name, type: r.type })))
+    }
+    
+    if (safeReservations.length > 0) {
+      console.log('📅 [Calendar] 预订详情:', safeReservations.map(r => ({ 
+        id: r.id, 
+        roomId: r.roomId, 
+        guestName: r.guestName,
+        checkInDate: r.checkInDate,
+        checkOutDate: r.checkOutDate
+      })))
+    }
+    
+    if (safeRoomStatuses.length > 0) {
+      console.log('📅 [Calendar] 房态详情:', safeRoomStatuses.map(rs => ({
+        roomId: rs.roomId,
+        date: rs.date,
+        status: rs.status,
+        reservationId: rs.reservationId
+      })))
+    }
     
     const generatedDates: DateData[] = []
     
@@ -170,9 +186,9 @@ export default function CalendarScreen() {
       // 为每个房间检查房态
       const rooms: DateData['rooms'] = {}
       
-      reduxRooms.forEach(room => {
+      safeRooms.forEach(room => {
         // 检查是否有房态记录（关房、脏房等）
-        const roomStatus = reduxRoomStatuses.find(
+        const roomStatus = safeRoomStatuses.find(
           rs => rs.roomId === room.id && rs.date === dateStr
         )
         
@@ -358,17 +374,18 @@ export default function CalendarScreen() {
   }
 
   // 从API加载数据
-  const loadDataFromAPI = async (showLoading = true) => {
-    if (!FEATURE_FLAGS.USE_BACKEND_API) {
-      console.log('📅 [Calendar] 未启用后端API，跳过加载')
-      return
-    }
-
+  const loadDataFromAPI = async (showLoading = true, clearCache = false) => {
     try {
       if (showLoading) {
         setIsLoading(true)
       } else {
         setIsRefreshing(true)
+      }
+      
+      // 如果需要清除缓存
+      if (clearCache) {
+        console.log('📅 [Calendar] 清除缓存...')
+        await dataService.cache.clearAll()
       }
       
       console.log('📅 [Calendar] 开始从API加载数据...')
@@ -413,12 +430,14 @@ export default function CalendarScreen() {
         })
       })
       
-      console.log('📅 [Calendar] 房态数据:', roomStatuses.length, '条')
-      const roomStatusGroups = roomStatuses.reduce((acc, rs) => {
+      // 处理房态数据（可能为 undefined 或空数组）
+      const safeRoomStatuses = Array.isArray(roomStatuses) ? roomStatuses : []
+      console.log('📅 [Calendar] 房态数据:', safeRoomStatuses.length, '条')
+      const roomStatusGroups = safeRoomStatuses.reduce((acc, rs) => {
         if (!acc[rs.roomId]) acc[rs.roomId] = []
         acc[rs.roomId].push(rs)
         return acc
-      }, {} as Record<string, typeof roomStatuses>)
+      }, {} as Record<string, typeof safeRoomStatuses>)
       
       Object.entries(roomStatusGroups).forEach(([roomId, statuses]) => {
         console.log(`  - 房间${roomId}:`, statuses.length, '天房态')
@@ -434,7 +453,7 @@ export default function CalendarScreen() {
       // 更新Redux状态
       dispatch(setRooms(rooms))
       dispatch(setReservations(reservations))
-      dispatch(setRoomStatuses(roomStatuses))
+      dispatch(setRoomStatuses(safeRoomStatuses))
       
       console.log('✅ [Calendar] 数据加载完成，已更新到Redux')
     } catch (error: any) {
@@ -446,18 +465,16 @@ export default function CalendarScreen() {
     }
   }
   
-  // 刷新数据
+  // 刷新数据（清除缓存）
   const handleRefresh = async () => {
-    console.log('🔄 [Calendar] 用户触发刷新')
-    await loadDataFromAPI(false)
+    console.log('🔄 [Calendar] 用户触发刷新，清除缓存')
+    await loadDataFromAPI(false, true)
   }
   
   // 初始加载数据
   useEffect(() => {
-    if (FEATURE_FLAGS.USE_BACKEND_API) {
-      console.log('📅 [Calendar] 组件挂载，加载数据')
-      loadDataFromAPI(true)
-    }
+    console.log('📅 [Calendar] 组件挂载，加载数据')
+    loadDataFromAPI(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // 只在组件挂载时执行一次
 
@@ -501,12 +518,15 @@ export default function CalendarScreen() {
       const dateData = dates[dateIndex]
       
       // 查找完整的预订信息
-      const roomStatus = reduxRoomStatuses.find(
+      const safeRoomStatuses = reduxRoomStatuses || []
+      const safeReservations = reduxReservations || []
+      
+      const roomStatus = safeRoomStatuses.find(
         rs => rs.roomId === roomId && rs.date === dateData.dateStr
       )
       
       const reservation = roomStatus?.reservationId 
-        ? reduxReservations.find(r => r.id === roomStatus.reservationId)
+        ? safeReservations.find(r => r.id === roomStatus.reservationId)
         : null
       
       console.log('📝 [Calendar] 查找到的预订:', reservation)
@@ -885,7 +905,17 @@ export default function CalendarScreen() {
         </View>
 
         {/* 整体可滚动区域（上下滚动） */}
-        <ScrollView style={styles.mainScrollView}>
+        <ScrollView 
+          style={styles.mainScrollView}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor="#4a90e2"
+              colors={['#4a90e2']}
+            />
+          }
+        >
           <View style={styles.tableContent}>
             {/* 左侧房间列 */}
             <View style={styles.leftColumn}>

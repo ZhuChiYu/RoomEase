@@ -10,7 +10,6 @@ import { store } from './store'
 import { restoreState } from './store/calendarSlice'
 import * as Notifications from 'expo-notifications'
 import { notificationService, addNotificationResponseListener } from './services/notifications'
-import { initializeLocalData } from './services/localDataService'
 import { persistedStorage } from './services/storage'
 import { apiClient } from './services/apiClient'
 import { FEATURE_FLAGS } from './config/environment'
@@ -53,15 +52,21 @@ export default function RootLayout() {
       try {
         console.log('🚀 App is loading...')
         
-        // 1. 初始化本地数据（首次启动时）
-        console.log('📦 初始化本地数据存储...')
+        // 0. 迁移旧的token key (auth_token -> @auth_token)
         try {
-          await initializeLocalData()
+          const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default
+          const oldToken = await AsyncStorage.getItem('auth_token')
+          if (oldToken) {
+            console.log('🔄 检测到旧的token，正在迁移...')
+            await AsyncStorage.setItem('@auth_token', oldToken)
+            await AsyncStorage.removeItem('auth_token')
+            console.log('✅ Token迁移完成')
+          }
         } catch (e) {
-          console.error('初始化本地数据失败:', e)
+          console.error('Token迁移失败:', e)
         }
         
-        // 2. 恢复持久化的Redux状态
+        // 1. 恢复持久化的Redux状态
         console.log('🔄 恢复应用状态...')
         let persistedState = null
         try {
@@ -76,10 +81,10 @@ export default function RootLayout() {
           console.log('ℹ️ 没有找到持久化状态，使用初始状态')
         }
         
-        // 3. 认证检查会在 AuthProvider 中自动处理
+        // 2. 认证检查会在 AuthProvider 中自动处理
         console.log('✅ 认证系统已启用')
         
-        // 4. 初始化推送通知
+        // 3. 初始化推送通知
         console.log('🔔 初始化推送通知...')
         const hasPermission = await notificationService.requestPermissions()
         if (hasPermission) {

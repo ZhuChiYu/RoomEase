@@ -45,34 +45,55 @@ export default function CloseRoomScreen() {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!note.trim()) {
       Alert.alert('提示', '请输入关房理由');
       return;
     }
 
-    // 关房30天
-    const startDate = new Date();
-    const endDate = new Date();
-    endDate.setDate(endDate.getDate() + 30);
-    
-    // 更新Redux状态
-    dispatch(closeRoom({
-      roomId: roomId as string,
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate.toISOString().split('T')[0],
-      note: `${roomType}: ${note}`,
-    }));
+    try {
+      // 关房30天
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + 30);
+      
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+      const fullNote = `${roomType}: ${note}`;
+      
+      console.log('🌐 [CloseRoom] 调用云服务关房API...');
+      // 1. 先调用API
+      const { dataService } = await import('./services/dataService');
+      await dataService.roomStatus.closeRoom(
+        roomId as string,
+        startDateStr,
+        endDateStr,
+        fullNote
+      );
+      console.log('✅ [CloseRoom] 关房API调用成功');
+      
+      // 2. 更新Redux状态
+      dispatch(closeRoom({
+        roomId: roomId as string,
+        startDate: startDateStr,
+        endDate: endDateStr,
+        note: fullNote,
+      }));
+      console.log('✅ [CloseRoom] Redux状态已更新');
 
-    Alert.alert('成功', '关房设置成功', [
-      {
-        text: '确定',
-        onPress: () => {
-          // 返回房态日历并刷新
-          router.back();
+      Alert.alert('成功', '关房设置成功', [
+        {
+          text: '确定',
+          onPress: () => {
+            // 返回房态日历并刷新
+            router.back();
+          },
         },
-      },
-    ]);
+      ]);
+    } catch (error: any) {
+      console.error('❌ [CloseRoom] 关房失败:', error);
+      Alert.alert('关房失败', error.message || '无法关房，请稍后重试');
+    }
   };
 
   return (

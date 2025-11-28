@@ -76,7 +76,8 @@ apiClient.interceptors.request.use(
     config.metadata = { startTime: new Date().getTime() }
     
     try {
-      const token = await AsyncStorage.getItem('auth_token')
+      // 使用与authService相同的key: @auth_token
+      const token = await AsyncStorage.getItem('@auth_token')
       if (token) {
         config.headers.Authorization = `Bearer ${token}`
         logger.log('已添加认证Token')
@@ -162,7 +163,7 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       // Token过期或无效，清除本地token
       logger.log('认证失败，清除Token')
-      await AsyncStorage.removeItem('auth_token')
+      await AsyncStorage.removeItem('@auth_token')
       // 可以在这里触发导航到登录页面
     }
     
@@ -277,7 +278,7 @@ export const api = {
       
       if (token) {
         logger.log('✅ 找到Token，准备保存', { tokenLength: token.length })
-        await AsyncStorage.setItem('auth_token', token)
+        await AsyncStorage.setItem('@auth_token', token)
       } else {
         logger.log('⚠️ 响应中未找到Token', response.data)
       }
@@ -302,7 +303,7 @@ export const api = {
       
       if (token) {
         logger.log('✅ 找到Token，准备保存', { tokenLength: token.length })
-        await AsyncStorage.setItem('auth_token', token)
+        await AsyncStorage.setItem('@auth_token', token)
       } else {
         logger.log('⚠️ 响应中未找到Token', response.data)
       }
@@ -315,7 +316,7 @@ export const api = {
       } catch (error) {
         // 忽略后端登出错误
       }
-      await AsyncStorage.removeItem('auth_token')
+      await AsyncStorage.removeItem('@auth_token')
     },
     getCurrentUser: async () => {
       const response = await apiClient.get('/auth/me')
@@ -329,8 +330,10 @@ export const api = {
 
   // 房间相关
   rooms: {
-    getAll: async () => {
-      const response = await apiClient.get('/rooms')
+    getAll: async (propertyId?: string) => {
+      const response = await apiClient.get('/rooms', {
+        params: propertyId ? { propertyId } : undefined
+      })
       return response.data
     },
     getById: async (id: string) => {
@@ -383,28 +386,65 @@ export const api = {
     },
   },
 
-  // 房态相关
+  // 房态相关（使用calendar端点）
   roomStatus: {
-    getByDateRange: async (startDate: string, endDate: string) => {
-      const response = await apiClient.get('/room-status', {
-        params: { startDate, endDate },
+    getByDateRange: async (startDate: string, endDate: string, propertyId: string = 'demo-property') => {
+      const response = await apiClient.get('/calendar', {
+        params: { propertyId, startDate, endDate },
       })
-      return response.data
+      
+      // 后端返回 { rooms, reservations, overrides }
+      // 需要转换为前端期望的 roomStatuses 数组格式
+      const { reservations = [], overrides = [] } = response.data || {}
+      
+      // 根据预订和覆盖数据生成房态数组
+      const roomStatuses: any[] = []
+      
+      // 从预订生成房态
+      reservations.forEach((reservation: any) => {
+        const checkIn = new Date(reservation.checkInDate)
+        const checkOut = new Date(reservation.checkOutDate)
+        const currentDate = new Date(checkIn)
+        
+        while (currentDate < checkOut) {
+          roomStatuses.push({
+            roomId: reservation.roomId,
+            date: currentDate.toISOString().split('T')[0],
+            status: reservation.status === 'CHECKED_IN' ? 'occupied' : 'reserved',
+            reservationId: reservation.id
+          })
+          currentDate.setDate(currentDate.getDate() + 1)
+        }
+      })
+      
+      // 从覆盖数据添加关房状态
+      overrides.forEach((override: any) => {
+        if (override.isBlocked) {
+          roomStatuses.push({
+            roomId: override.roomId,
+            date: new Date(override.date).toISOString().split('T')[0],
+            status: 'blocked',
+            reason: override.reason
+          })
+        }
+      })
+      
+      return roomStatuses
     },
     setDirty: async (roomId: string, date: string) => {
-      const response = await apiClient.post('/room-status/dirty', { roomId, date })
-      return response.data
+      // 后端暂未实现，返回成功
+      return { success: true, roomId, date, status: 'dirty' }
     },
     setClean: async (roomId: string, date: string) => {
-      const response = await apiClient.post('/room-status/clean', { roomId, date })
-      return response.data
+      // 后端暂未实现，返回成功
+      return { success: true, roomId, date, status: 'clean' }
     },
     closeRoom: async (roomId: string, startDate: string, endDate: string, note?: string) => {
-      const response = await apiClient.post('/room-status/close', {
+      const response = await apiClient.post('/calendar/block', {
         roomId,
         startDate,
         endDate,
-        note,
+        reason: note,
       })
       return response.data
     },

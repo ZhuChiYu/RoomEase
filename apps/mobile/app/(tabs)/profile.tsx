@@ -14,15 +14,9 @@ import {
 } from 'react-native'
 import { useAppSelector, useAppDispatch } from '../store/hooks'
 import { restoreState } from '../store/calendarSlice'
-import {
-  exportAllData,
-  importDataFromFile,
-  restoreBackupData,
-  getDataStats,
-  clearAllData,
-} from '../services/dataBackupService'
 import { persistedStorage, authStorage } from '../services/storage'
 import { useAuth } from '../contexts/AuthContext'
+import { dataService } from '../services/dataService'
 
 interface UserInfo {
   name: string
@@ -75,6 +69,11 @@ export default function ProfileScreen() {
   const dispatch = useAppDispatch()
   const calendarState = useAppSelector(state => state.calendar)
   const { logout, user, refreshUser } = useAuth()
+  
+  // 从Redux获取数据统计
+  const rooms = useAppSelector(state => state.calendar.rooms)
+  const reservations = useAppSelector(state => state.calendar.reservations)
+  const roomStatuses = useAppSelector(state => state.calendar.roomStatuses)
   
   const [userInfo, setUserInfo] = useState<UserInfo>({
     name: user?.name || '张经理',
@@ -147,15 +146,12 @@ export default function ProfileScreen() {
   }
 
   const loadDataStatistics = async () => {
-    const stats = await getDataStats()
-    if (stats) {
-      setDataStats({
-        rooms: stats.totalRooms || 0,
-        reservations: stats.totalReservations || 0,
-        roomStatuses: stats.totalRoomStatuses || 0,
-        storageSize: '0 KB',
-      })
-    }
+    setDataStats({
+      rooms: rooms.length || 0,
+      reservations: reservations.length || 0,
+      roomStatuses: roomStatuses.length || 0,
+      storageSize: '0 KB',
+    })
   }
 
   const [editModalVisible, setEditModalVisible] = useState(false)
@@ -244,171 +240,30 @@ export default function ProfileScreen() {
     )
   }
 
-  const handleDataExport = () => {
-    Alert.alert(
-      '数据导出',
-      '选择导出格式和类型',
-      [
-        {
-          text: '完整备份（JSON）',
-          onPress: async () => {
-            setIsLoading(true)
-            const result = await exportAllData()
-            setIsLoading(false)
-            
-            if (result.success) {
-              Alert.alert('导出成功', `数据已导出为JSON文件\n\n包含:\n• ${dataStats.rooms} 个房间\n• ${dataStats.reservations} 条预订\n• ${dataStats.roomStatuses} 条房态记录`)
-            } else {
-              Alert.alert('导出失败', result.message || '未知错误')
-            }
-          }
-        },
-        {
-          text: '预订数据（CSV）',
-          onPress: async () => {
-            setIsLoading(true)
-            // 导出预订数据（使用导出所有数据功能）
-            const result = await exportAllData()
-            setIsLoading(false)
-            
-            if (result.success) {
-              Alert.alert('导出成功', '预订数据已导出为CSV文件，可在Excel中打开')
-            } else {
-              Alert.alert('导出失败', result.error || '未知错误')
-            }
-          }
-        },
-        {
-          text: '房间数据（CSV）',
-          onPress: async () => {
-            setIsLoading(true)
-            // 导出房间数据（使用导出所有数据功能）
-            const result = await exportAllData()
-            setIsLoading(false)
-            
-            if (result.success) {
-              Alert.alert('导出成功', '房间数据已导出为CSV文件，可在Excel中打开')
-            } else {
-              Alert.alert('导出失败', result.error || '未知错误')
-            }
-          }
-        },
-        { text: '取消', style: 'cancel' }
-      ]
-    )
-  }
+  // 已移除：数据导出功能（所有数据现在都在云端）
 
-  const handleDataImport = () => {
+  // 已移除：数据导入功能（所有数据现在都在云端）
+  
+  // 已移除：数据备份功能（所有数据现在都在云端自动备份）
+  
+  const handleClearCache = async () => {
     Alert.alert(
-      '数据导入',
-      '⚠️ 重要提示：\n\n导入数据将会替换当前所有本地数据，此操作不可撤销。\n\n建议先导出当前数据进行备份。',
+      '清除缓存',
+      '确定要清除所有本地缓存吗？\n\n清除后将从服务器重新获取数据。',
       [
         { text: '取消', style: 'cancel' },
         {
-          text: '继续导入',
+          text: '清除',
           style: 'destructive',
           onPress: async () => {
             setIsLoading(true)
-            const result = await importDataFromFile()
-            setIsLoading(false)
-            
-            if (result.success && result.data) {
-              // 显示导入预览
-              Alert.alert(
-                '确认导入',
-                `即将导入以下数据：\n\n• ${result.data.metadata.totalRooms} 个房间\n• ${result.data.metadata.totalReservations} 条预订\n• ${result.data.metadata.totalRoomStatuses} 条房态记录\n\n导出时间：${new Date(result.data.exportDate).toLocaleString()}\n\n确定要导入吗？`,
-                [
-                  { text: '取消', style: 'cancel' },
-                  {
-                    text: '确定导入',
-                    style: 'destructive',
-                    onPress: async () => {
-                      try {
-                        // 应用导入的数据
-                        const restoreResult = await restoreBackupData(result.data!, 'replace')
-                        
-                        // 更新Redux状态
-                        dispatch(restoreState(importedData))
-                        
-                        // 保存到本地存储
-                        await persistedStorage.saveState({ 
-                          calendar: importedData
-                        })
-                        
-                        Alert.alert('导入成功', '数据已成功导入，应用将自动刷新')
-                        
-                        // 重新加载统计
-                        loadDataStatistics()
-                      } catch (error: any) {
-                        Alert.alert('导入失败', error.message || '未知错误')
-                      }
-                    }
-                  }
-                ]
-              )
-            } else if (result.error === '用户取消了选择') {
-              // 用户取消，不显示错误
-            } else {
-              Alert.alert('导入失败', result.error || '未知错误')
-            }
-          }
-        }
-      ]
-    )
-  }
-
-  const handleBackup = () => {
-    Alert.alert(
-      '数据备份',
-      `当前数据统计：\n\n• 房间：${dataStats.rooms} 个\n• 预订：${dataStats.reservations} 条\n• 房态记录：${dataStats.roomStatuses} 条\n• 存储大小：${dataStats.storageSize}\n\n确定要备份所有数据吗？`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '开始备份',
-          onPress: async () => {
-            setIsLoading(true)
-            const result = await exportAllData()
-            setIsLoading(false)
-            
-            if (result.success) {
-              Alert.alert('备份完成', `数据已成功备份并导出\n\n包含:\n• ${dataStats.rooms} 个房间\n• ${dataStats.reservations} 条预订\n• ${dataStats.roomStatuses} 条房态记录\n\n您可以将此文件保存到云盘或其他设备`)
-            } else {
-              Alert.alert('备份失败', result.message || '未知错误')
-            }
-          }
-        }
-      ]
-    )
-  }
-
-  const handleClearData = () => {
-    Alert.alert(
-      '清除所有数据',
-      '⚠️ 警告：此操作将删除所有本地数据，包括房间、预订和房态记录。此操作不可撤销！\n\n建议在清除前先导出备份。',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '确认清除',
-          style: 'destructive',
-          onPress: async () => {
-            setIsLoading(true)
-            const result = await clearAllData()
-            setIsLoading(false)
-            
-            if (result.success) {
-              // 重置Redux状态
-              dispatch(restoreState({
-                rooms: [],
-                roomTypes: [],
-                reservations: [],
-                roomStatuses: [],
-                operationLogs: [],
-              }))
-              
-              Alert.alert('清除成功', '所有数据已清除，应用将重新初始化')
-              loadDataStatistics()
-            } else {
-              Alert.alert('清除失败', result.error || '未知错误')
+            try {
+              await dataService.cache.clearAll()
+              Alert.alert('成功', '缓存已清除')
+            } catch (error: any) {
+              Alert.alert('失败', error.message || '清除缓存失败')
+            } finally {
+              setIsLoading(false)
             }
           }
         }
@@ -601,7 +456,7 @@ export default function ProfileScreen() {
           
           {/* 数据统计卡片 */}
           <View style={styles.statsCard}>
-            <Text style={styles.statsTitle}>本地数据统计</Text>
+            <Text style={styles.statsTitle}>数据统计</Text>
             <View style={styles.statsGrid}>
               <View style={styles.statItem}>
                 <Text style={styles.statValue}>{dataStats.rooms}</Text>
@@ -624,29 +479,14 @@ export default function ProfileScreen() {
 
           <View style={styles.settingsList}>
             <SettingItem
-              label="数据导出"
+              label="清除缓存"
               type="action"
-              onPress={handleDataExport}
-            />
-            <SettingItem
-              label="数据导入"
-              type="action"
-              onPress={handleDataImport}
-            />
-            <SettingItem
-              label="数据备份"
-              type="action"
-              onPress={handleBackup}
-            />
-            <SettingItem
-              label="清除所有数据"
-              type="action"
-              onPress={handleClearData}
+              onPress={handleClearCache}
             />
           </View>
           
           <Text style={styles.dataManagementTip}>
-            💡 提示：数据以JSON格式存储在本地，您可以导出备份后在其他设备导入，或在迁移到服务器时使用。
+            💡 提示：所有数据都存储在云端服务器。本地缓存仅用于提高加载速度，清除缓存后会从服务器重新获取数据。
           </Text>
         </View>
 

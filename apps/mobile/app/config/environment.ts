@@ -41,20 +41,14 @@ export const API_CONFIG = {
 
 // 功能开关
 export const FEATURE_FLAGS = {
-  // 是否启用数据备份（导入/导出功能）
-  ENABLE_DATA_BACKUP: true,
-  
   // 是否启用通知
   ENABLE_NOTIFICATIONS: true,
   
   // 是否启用OCR识别
   ENABLE_OCR: false,
   
-  // 是否显示开发者选项卡
-  SHOW_DEVELOPER_TAB: true,
-  
   // 是否启用数据同步
-  ENABLE_DATA_SYNC: false,
+  ENABLE_DATA_SYNC: true,
 }
 
 // 应用配置
@@ -100,27 +94,11 @@ export const PLATFORM_CONFIG = {
   isWeb: Platform.OS === 'web',
 }
 
-// 开发者模式说明
-export const DEVELOPER_MODE_INFO = {
-  description: '开发者模式允许在本地存储和服务器API之间切换数据源',
-  localStorageMode: {
-    name: '本地存储模式',
-    description: '所有数据保存在设备本地，支持离线使用',
-    features: ['离线可用', '数据导入导出', '快速响应', '无需网络'],
-  },
-  serverApiMode: {
-    name: '服务器API模式',
-    description: '数据从服务器获取，支持多设备同步',
-    features: ['多设备同步', '数据云端备份', '实时更新', '需要网络连接'],
-  },
-}
-
 export default {
   isDev,
   API_CONFIG,
   FEATURE_FLAGS,
   APP_CONFIG,
   PLATFORM_CONFIG,
-  DEVELOPER_MODE_INFO,
 }
 

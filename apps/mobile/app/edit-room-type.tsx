@@ -15,6 +15,8 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useAppDispatch, useAppSelector } from './store/hooks';
 import { saveRoomType, deleteRoomType as deleteRoomTypeAction, addRoomsToType, deleteRoom } from './store/calendarSlice';
 import type { RoomType } from './store/types';
+import { dataService } from './services/dataService';
+import { authService } from './services/authService';
 
 export default function EditRoomTypeScreen() {
   const router = useRouter();
@@ -133,9 +135,24 @@ export default function EditRoomTypeScreen() {
               setPendingNewRooms(prev => prev.filter(name => name !== roomName));
               console.log('🗑️ [EditRoomType] 从待保存列表删除房间:', roomName);
             } else {
-              // 从Redux删除已保存的房间
-              dispatch(deleteRoom(roomId));
-              console.log('🗑️ [EditRoomType] 从Redux删除房间:', roomId);
+              // 调用API删除房间
+              (async () => {
+                try {
+                  await dataService.rooms.delete(roomId);
+                  // 删除成功后更新Redux
+                  dispatch(deleteRoom(roomId));
+                  console.log('✅ [EditRoomType] 房间已从云服务删除:', roomId);
+                  Alert.alert('成功', '房间已删除');
+                } catch (error: any) {
+                  // 如果是401认证错误，提示用户登录
+                  if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+                    Alert.alert('需要登录', '请先登录后再操作');
+                  } else {
+                    Alert.alert('删除失败', error.message || '无法删除房间');
+                  }
+                  console.error('❌ [EditRoomType] 删除房间失败:', error);
+                }
+              })();
             }
           },
         },
@@ -146,21 +163,47 @@ export default function EditRoomTypeScreen() {
   const handleDeleteRoomType = () => {
     Alert.alert(
       '确认删除',
-      '删除后将不能恢复，确定要删除此房型吗？',
+      `删除后将不能恢复，确定要删除此房型吗？\n\n该房型下有 ${currentRooms.length} 个房间将被删除。`,
       [
         { text: '取消', style: 'cancel' },
         {
           text: '删除',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             if (params.id) {
-              dispatch(deleteRoomTypeAction(params.id as string));
-              Alert.alert('成功', '房型已删除', [
-                {
-                  text: '确定',
-                  onPress: () => router.back(),
-                },
-              ]);
+              try {
+                // 1. 先删除该房型下的所有房间（从云服务）
+                console.log('🌐 开始删除房型下的所有房间...');
+                for (const room of savedRooms) {
+                  try {
+                    await dataService.rooms.delete(room.id);
+                    console.log('✅ [EditRoomType] 房间已从云服务删除:', room.id);
+                  } catch (error: any) {
+                    console.error('❌ [EditRoomType] 删除房间失败:', room.id, error);
+                    // 如果不是401错误，继续尝试删除其他房间
+                    if (!error.message?.includes('401') && !error.message?.includes('Unauthorized')) {
+                      // 非认证错误，继续
+                    } else {
+                      // 认证错误，抛出
+                      throw new Error('需要登录后才能删除房间，请先登录');
+                    }
+                  }
+                }
+                
+                // 2. 删除Redux中的房型配置
+                dispatch(deleteRoomTypeAction(params.id as string));
+                console.log('✅ [EditRoomType] 房型已从Redux删除');
+                
+                Alert.alert('成功', '房型及其所有房间已删除', [
+                  {
+                    text: '确定',
+                    onPress: () => router.back(),
+                  },
+                ]);
+              } catch (error: any) {
+                Alert.alert('删除失败', error.message || '无法删除房型');
+                console.error('❌ [EditRoomType] 删除房型失败:', error);
+              }
             }
           },
         },
@@ -188,41 +231,84 @@ export default function EditRoomTypeScreen() {
       return;
     }
 
-    // 保存房型到Redux
-    const roomTypeData = {
-      id: params.id as string || Date.now().toString(),
-      name: formData.name,
-      shortName: formData.shortName,
-      defaultPrice: price,
-      differentiateWeekend: formData.differentiateWeekend,
-    };
+    try {
+      // 保存房型到Redux（房型在前端管理）
+      const roomTypeData = {
+        id: params.id as string || Date.now().toString(),
+        name: formData.name,
+        shortName: formData.shortName,
+        defaultPrice: price,
+        differentiateWeekend: formData.differentiateWeekend,
+      };
 
-    // 1. 保存房型配置
-    dispatch(saveRoomType(roomTypeData));
-    console.log('💾 房型已保存到Redux:', roomTypeData);
-    
-    // 2. 如果有待保存的新房间，一起保存
-    if (pendingNewRooms.length > 0) {
-      dispatch(addRoomsToType({
-        roomTypeName: formData.name,
-        roomNames: pendingNewRooms
-      }));
-      console.log('🚪 房间已保存到Redux:', pendingNewRooms);
+      // 1. 保存房型配置到Redux
+      dispatch(saveRoomType(roomTypeData));
+      console.log('💾 房型已保存到Redux:', roomTypeData);
+      
+      // 2. 如果有待保存的新房间，调用API创建房间
+      if (pendingNewRooms.length > 0) {
+        console.log('🌐 开始创建房间到云服务...');
+        
+        // 获取用户的propertyId
+        const propertyId = await authService.getPropertyId();
+        if (!propertyId) {
+          throw new Error('未找到propertyId，请先登录');
+        }
+        
+        console.log('📋 [EditRoomType] 使用propertyId:', propertyId);
+        
+        // 为每个房间调用API
+        for (const roomName of pendingNewRooms) {
+          const roomData = {
+            name: roomName,
+            code: roomName, // 使用房间名作为code
+            roomType: formData.name,
+            maxGuests: 2,
+            bedCount: 1,
+            bathroomCount: 1,
+            basePrice: price,
+            propertyId: propertyId,  // 使用真实的propertyId
+            isActive: true,
+          };
+          
+          try {
+            const createdRoom = await dataService.rooms.create(roomData);
+            console.log('✅ [EditRoomType] 房间已创建到云服务:', createdRoom.id);
+          } catch (error: any) {
+            console.error('❌ [EditRoomType] 创建房间失败:', roomName, error);
+            // 如果是401认证错误，提示用户登录
+            if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+              throw new Error('需要登录后才能创建房间，请先登录');
+            }
+            throw new Error(`创建房间 ${roomName} 失败: ${error.message}`);
+          }
+        }
+        
+        // 所有房间创建成功后，更新Redux
+        dispatch(addRoomsToType({
+          roomTypeName: formData.name,
+          roomNames: pendingNewRooms
+        }));
+        console.log('✅ 所有房间已创建到云服务并更新Redux');
+      }
+      
+      const message = isEditMode 
+        ? '房型已保存' 
+        : `房型已创建${pendingNewRooms.length > 0 ? `，包含${pendingNewRooms.length}个房间` : ''}`;
+      
+      Alert.alert('成功', message, [
+        {
+          text: '确定',
+          onPress: () => {
+            console.log('🔙 [EditRoomType] 返回上一页');
+            router.back();
+          },
+        },
+      ]);
+    } catch (error: any) {
+      console.error('❌ [EditRoomType] 保存失败:', error);
+      Alert.alert('保存失败', error.message || '无法保存房型');
     }
-    
-    // 等待Redux持久化完成（防抖延迟是500ms）
-    await new Promise(resolve => setTimeout(resolve, 600));
-
-    const message = isEditMode 
-      ? '房型已保存' 
-      : `房型已创建${pendingNewRooms.length > 0 ? `，包含${pendingNewRooms.length}个房间` : ''}`;
-    
-    Alert.alert('成功', message, [
-      {
-        text: '确定',
-        onPress: () => router.back(),
-      },
-    ]);
   };
 
   // 使用useFocusEffect监听页面获得焦点（从add-rooms返回时）

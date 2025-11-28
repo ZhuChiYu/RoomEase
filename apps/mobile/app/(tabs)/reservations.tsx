@@ -9,11 +9,13 @@ import {
   FlatList,
   Modal,
   Alert,
+  RefreshControl,
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { DateWheelPicker } from '../components/DateWheelPicker'
 import { useAppSelector, useAppDispatch } from '../store/hooks'
 import { deleteReservation } from '../store/calendarSlice'
+import { dataService } from '../services/dataService'
 
 interface Reservation {
   id: string
@@ -131,6 +133,7 @@ export default function ReservationsScreen() {
   const dispatch = useAppDispatch()
   const [searchText, setSearchText] = useState('')
   const [selectedFilter, setSelectedFilter] = useState('all')
+  const [refreshing, setRefreshing] = useState(false)
   const [addModalVisible, setAddModalVisible] = useState(false)
   const [newBookingData, setNewBookingData] = useState({
     guestName: '',
@@ -160,6 +163,20 @@ export default function ReservationsScreen() {
     { id: 'cancelled', name: '已取消' },
     { id: 'today', name: '今日' },
   ]
+
+  // 下拉刷新处理
+  const onRefresh = async () => {
+    setRefreshing(true)
+    try {
+      console.log('🔄 [预订管理] 下拉刷新，清除缓存...')
+      await dataService.cache.clearAll()
+      console.log('✅ [预订管理] 缓存已清除，数据将从服务器重新加载')
+    } catch (error) {
+      console.error('❌ [预订管理] 刷新失败:', error)
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   // 从Redux获取真实预订数据
   const reduxReservations = useAppSelector(state => state.calendar.reservations)
@@ -367,6 +384,14 @@ export default function ReservationsScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#4a90e2"
+            colors={['#4a90e2']}
+          />
+        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>暂无预订记录</Text>
