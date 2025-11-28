@@ -28,6 +28,8 @@ export class LoginResponseDto {
     email: string
     name: string
     role: string
+    tenantId?: string
+    propertyId?: string
   }
 }
 
