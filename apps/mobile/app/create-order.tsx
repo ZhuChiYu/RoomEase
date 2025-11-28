@@ -11,6 +11,7 @@ import {
   Platform,
   StatusBar,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native'
 import { useRouter, useLocalSearchParams } from 'expo-router'
 import { DateWheelPicker } from './components/DateWheelPicker'
@@ -75,6 +76,7 @@ export default function CreateOrderScreen() {
   const [priceModalVisible, setPriceModalVisible] = useState(false)
   const [editingPrice, setEditingPrice] = useState('')
   const [expandedRoomTypes, setExpandedRoomTypes] = useState<Set<string>>(new Set())
+  const [isSubmitting, setIsSubmitting] = useState(false) // 添加loading状态
   
   // 当打开房间选择时，默认展开所有房型
   useEffect(() => {
@@ -144,7 +146,7 @@ export default function CreateOrderScreen() {
   }, 0)
 
   // 渠道选项
-  const channels = ['自来客', '携程', '美团', '飞猪', '去哪儿', 'Booking', '电话预订', '其他']
+  const channels = ['自来客', '携程', '美团', '飞猪', '去哪儿', 'Booking', '小猪', '途家', '蚂蚁短租', '同城旅行', '电话预订', '其他']
 
   // 处理日期选择
   const handleDateSelect = (date: string) => {
@@ -273,6 +275,9 @@ export default function CreateOrderScreen() {
       return
     }
 
+    // 显示loading
+    setIsSubmitting(true)
+    
     // 为每个房间创建预订
     const orderId = Date.now().toString()
     
@@ -345,10 +350,14 @@ export default function CreateOrderScreen() {
       }
     } catch (error: any) {
       console.error('❌ [CreateOrder] 创建预订失败:', error)
+      setIsSubmitting(false) // 隐藏loading
       Alert.alert('错误', error.message || '创建预订失败')
       return
     }
 
+    // 成功后隐藏loading
+    setIsSubmitting(false)
+    
     // 跳转到订单详情页（显示第一个房间的信息）
     const firstRoom = rooms[0]
     const firstReservationId = `RES_${orderId}_0` // 第一个房间的预订ID
@@ -533,10 +542,15 @@ export default function CreateOrderScreen() {
           <Text style={styles.secondaryButtonText}>直接入住</Text>
         </TouchableOpacity>
         <TouchableOpacity 
-          style={[styles.button, styles.primaryButton]}
+          style={[styles.button, styles.primaryButton, isSubmitting && styles.buttonDisabled]}
           onPress={handleSubmitOrder}
+          disabled={isSubmitting}
         >
-          <Text style={styles.primaryButtonText}>提交订单</Text>
+          {isSubmitting ? (
+            <ActivityIndicator color="white" size="small" />
+          ) : (
+            <Text style={styles.primaryButtonText}>提交订单</Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -894,6 +908,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: 'white',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   keyboardAvoidView: {
     flex: 1,

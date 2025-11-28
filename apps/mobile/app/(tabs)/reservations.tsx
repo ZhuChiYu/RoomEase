@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
+import { useFocusEffect } from '@react-navigation/native'
 import {
   View,
   Text,
@@ -14,7 +15,7 @@ import {
 import { useRouter } from 'expo-router'
 import { DateWheelPicker } from '../components/DateWheelPicker'
 import { useAppSelector, useAppDispatch } from '../store/hooks'
-import { deleteReservation } from '../store/calendarSlice'
+import { deleteReservation, setRooms, setReservations, setRoomStatuses } from '../store/calendarSlice'
 import { dataService } from '../services/dataService'
 
 interface Reservation {
@@ -164,39 +165,115 @@ export default function ReservationsScreen() {
     { id: 'today', name: '今日' },
   ]
 
+  // 从Redux获取真实预订数据和房间数据
+  const reduxReservations = useAppSelector(state => state.calendar.reservations)
+  const rooms = useAppSelector(state => state.calendar.rooms)
+  
+  // 加载数据
+  const loadData = useCallback(async () => {
+    // 如果已经有数据，跳过加载
+    if (reduxReservations.length > 0) {
+      console.log('📋 [预订管理] 数据已存在，跳过加载')
+      return
+    }
+    
+    try {
+      console.log('📋 [预订管理] 开始加载数据...')
+      
+      // 计算日期范围（今天往前30天，往后30天）
+      const today = new Date()
+      const startDate = new Date(today)
+      startDate.setDate(today.getDate() - 30)
+      const endDate = new Date(today)
+      endDate.setDate(today.getDate() + 30)
+      
+      const startDateStr = startDate.toISOString().split('T')[0]
+      const endDateStr = endDate.toISOString().split('T')[0]
+      
+      // 并行加载数据
+      const [roomsData, reservationsData, roomStatusesData] = await Promise.all([
+        dataService.rooms.getAll(),
+        dataService.reservations.getAll({
+          startDate: startDateStr,
+          endDate: endDateStr,
+        }),
+        dataService.roomStatus.getByDateRange(startDateStr, endDateStr)
+      ])
+      
+      console.log('📋 [预订管理] 数据加载完成:', {
+        rooms: roomsData.length,
+        reservations: reservationsData.length,
+      })
+      
+      // 更新Redux
+      dispatch(setRooms(roomsData))
+      dispatch(setReservations(reservationsData))
+      dispatch(setRoomStatuses(Array.isArray(roomStatusesData) ? roomStatusesData : []))
+    } catch (error) {
+      console.error('❌ [预订管理] 数据加载失败:', error)
+    }
+  }, [reduxReservations.length, dispatch])
+  
+  // 页面获得焦点时加载数据
+  useFocusEffect(
+    useCallback(() => {
+      console.log('📋 [预订管理] 页面获得焦点')
+      loadData()
+    }, [loadData])
+  )
+  
   // 下拉刷新处理
   const onRefresh = async () => {
     setRefreshing(true)
     try {
       console.log('🔄 [预订管理] 下拉刷新，清除缓存...')
       await dataService.cache.clearAll()
-      console.log('✅ [预订管理] 缓存已清除，数据将从服务器重新加载')
+      console.log('✅ [预订管理] 缓存已清除，重新加载数据...')
+      await loadData()
     } catch (error) {
       console.error('❌ [预订管理] 刷新失败:', error)
     } finally {
       setRefreshing(false)
     }
   }
-
-  // 从Redux获取真实预订数据
-  const reduxReservations = useAppSelector(state => state.calendar.reservations)
   
   console.log('📋 [Reservations] Redux预订数据:', reduxReservations)
+  console.log('📋 [Reservations] Redux房间数据:', rooms.length, '个')
   
   // 转换为页面所需的格式
-  const reservations: Reservation[] = reduxReservations.map(r => ({
+  const reservations: Reservation[] = reduxReservations.map((r: any) => {
+    // 从房间列表查找房间信息
+    const room = rooms.find(room => room.id === r.roomId)
+    const roomName = room?.name || r.roomNumber || r.room?.name || '未知房间'
+    const roomType = room?.type || r.room?.roomType || r.roomType || '未知房型'
+    
+    // 格式化日期
+    const formatDate = (dateStr: string) => {
+      try {
+        const date = new Date(dateStr)
+        const year = date.getFullYear()
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const day = String(date.getDate()).padStart(2, '0')
+        return `${year}-${month}-${day}`
+      } catch {
+        return dateStr
+      }
+    }
+    
+    return {
     id: r.id,
-    guestName: r.guestName,
-    room: `${r.roomNumber} - ${r.roomType}`,
-    checkIn: r.checkInDate,
-    checkOut: r.checkOutDate,
-    status: r.status === 'confirmed' ? 'confirmed' : 
-            r.status === 'checked-in' ? 'checked_in' :
-            r.status === 'checked-out' ? 'checked_out' :
-            r.status === 'cancelled' ? 'cancelled' : 'pending',
-    totalAmount: r.totalAmount,
-    guestPhone: r.guestPhone
-  }))
+      guestName: r.guestName || '未知',
+      room: `${roomName} - ${roomType}`,
+      checkIn: formatDate(r.checkInDate),
+      checkOut: formatDate(r.checkOutDate),
+      status: r.status === 'CONFIRMED' || r.status === 'confirmed' ? 'confirmed' : 
+              r.status === 'CHECKED_IN' || r.status === 'checked-in' ? 'checked_in' :
+              r.status === 'CHECKED_OUT' || r.status === 'checked-out' ? 'checked_out' :
+              r.status === 'CANCELLED' || r.status === 'cancelled' ? 'cancelled' : 'pending',
+      totalAmount: Number(r.totalAmount) || 0,
+      guestPhone: r.guestPhone || ''
+    }
+  })
 
   const filteredReservations = useMemo(() => {
     let filtered = reservations.filter(reservation => {

@@ -153,25 +153,32 @@ export const dataService = {
       return await api.rooms.getById(id)
     },
 
-    create: async (roomData: Omit<Room, 'id'>): Promise<Room> => {
+    create: async (roomData: any): Promise<Room> => {
       console.log('🌐 在云服务创建房间')
       const room = await api.rooms.create(roomData)
-      // 清除房间列表缓存
+      // 清除所有房间相关缓存（包括带propertyId后缀的）
+      const propertyId = await getPropertyId()
       await cache.clear(CACHE_KEYS.ROOMS)
+      await cache.clear(`${CACHE_KEYS.ROOMS}_${propertyId}`)
+      console.log('🧹 已清除房间缓存，下次将从API获取最新数据')
       return room
     },
 
     update: async (id: string, roomData: Partial<Room>): Promise<Room> => {
       const room = await api.rooms.update(id, roomData)
-      // 清除房间列表缓存
+      // 清除所有房间相关缓存
+      const propertyId = await getPropertyId()
       await cache.clear(CACHE_KEYS.ROOMS)
+      await cache.clear(`${CACHE_KEYS.ROOMS}_${propertyId}`)
       return room
     },
 
     delete: async (id: string): Promise<void> => {
       await api.rooms.delete(id)
-      // 清除房间列表缓存
+      // 清除所有房间相关缓存
+      const propertyId = await getPropertyId()
       await cache.clear(CACHE_KEYS.ROOMS)
+      await cache.clear(`${CACHE_KEYS.ROOMS}_${propertyId}`)
     },
   },
 
@@ -213,48 +220,49 @@ export const dataService = {
     create: async (reservationData: any): Promise<Reservation> => {
       console.log('🌐 在云服务创建预订')
       const reservation = await api.reservations.create(reservationData)
-      // 清除预订和房态缓存
-      await cache.clear(CACHE_KEYS.RESERVATIONS)
-      await cache.clear(CACHE_KEYS.ROOM_STATUS)
+      // 清除所有预订和房态相关缓存
+      await cache.clearAll()
+      console.log('🧹 已清除所有缓存，下次将从API获取最新数据')
       return reservation
     },
 
     update: async (id: string, reservationData: Partial<Reservation>): Promise<Reservation> => {
       const reservation = await api.reservations.update(id, reservationData)
-      // 清除预订和房态缓存
-      await cache.clear(CACHE_KEYS.RESERVATIONS)
-      await cache.clear(CACHE_KEYS.ROOM_STATUS)
+      // 清除所有预订和房态相关缓存
+      await cache.clearAll()
+      console.log('🧹 已清除所有缓存，下次将从API获取最新数据')
       return reservation
     },
 
     cancel: async (id: string): Promise<Reservation> => {
       const reservation = await api.reservations.cancel(id)
-      // 清除预订和房态缓存
-      await cache.clear(CACHE_KEYS.RESERVATIONS)
-      await cache.clear(CACHE_KEYS.ROOM_STATUS)
+      // 清除所有预订和房态相关缓存
+      await cache.clearAll()
+      console.log('🧹 已清除所有缓存，下次将从API获取最新数据')
       return reservation
     },
 
     delete: async (id: string): Promise<void> => {
+      console.log('🌐 在云服务删除预订:', id)
       await api.reservations.delete(id)
-      // 清除预订和房态缓存
-      await cache.clear(CACHE_KEYS.RESERVATIONS)
-      await cache.clear(CACHE_KEYS.ROOM_STATUS)
+      // 清除所有预订和房态相关缓存
+      await cache.clearAll()
+      console.log('🧹 已清除所有缓存，下次将从API获取最新数据')
     },
 
     checkIn: async (id: string): Promise<Reservation> => {
       const reservation = await api.reservations.checkIn(id)
-      // 清除预订和房态缓存
-      await cache.clear(CACHE_KEYS.RESERVATIONS)
-      await cache.clear(CACHE_KEYS.ROOM_STATUS)
+      // 清除所有预订和房态相关缓存
+      await cache.clearAll()
+      console.log('🧹 已清除所有缓存，下次将从API获取最新数据')
       return reservation
     },
 
     checkOut: async (id: string): Promise<Reservation> => {
       const reservation = await api.reservations.checkOut(id)
-      // 清除预订和房态缓存
-      await cache.clear(CACHE_KEYS.RESERVATIONS)
-      await cache.clear(CACHE_KEYS.ROOM_STATUS)
+      // 清除所有预订和房态相关缓存
+      await cache.clearAll()
+      console.log('🧹 已清除所有缓存，下次将从API获取最新数据')
       return reservation
     },
   },

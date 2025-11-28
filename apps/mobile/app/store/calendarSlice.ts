@@ -99,15 +99,21 @@ const calendarSlice = createSlice({
         )
         
         // 添加操作日志
+        // 获取房间信息
+        const room = state.rooms.find(r => r.id === reservation.roomId)
+        const roomInfo = room ? `${room.type} - ${room.name}` : (reservation.roomType || '未知房间')
+        
         const log: OperationLog = {
           id: `${Date.now()}-cancel`,
-          orderId: reservation.orderId,
+          orderId: reservation.orderId || reservation.id, // 兼容不同字段
           action: '取消预订',
           operator: '用户',
           time: new Date().toLocaleString('zh-CN'),
-          details: `订单号：${reservation.orderId}\n客人：${reservation.guestName}\n房间：${reservation.roomType}`,
+          details: `订单号：${reservation.orderId || reservation.id}\n客人：${reservation.guestName}\n房间：${roomInfo}`,
         }
+        console.log('📝 [Redux] 添加取消预订日志:', log)
         state.operationLogs.push(log)
+        console.log('📝 [Redux] 当前日志总数:', state.operationLogs.length)
       }
     },
 
@@ -126,15 +132,21 @@ const calendarSlice = createSlice({
         )
         
         // 添加操作日志
+        // 获取房间信息
+        const room = state.rooms.find(r => r.id === reservation.roomId)
+        const roomInfo = room ? `${room.type} - ${room.name}` : (reservation.roomType || '未知房间')
+        
         const log: OperationLog = {
           id: `${Date.now()}-delete`,
-          orderId: reservation.orderId,
+          orderId: reservation.orderId || reservation.id, // 兼容不同字段
           action: '删除预订',
           operator: '用户',
           time: new Date().toLocaleString('zh-CN'),
-          details: `订单号：${reservation.orderId}\n客人：${reservation.guestName}\n房间：${reservation.roomType}`,
+          details: `订单号：${reservation.orderId || reservation.id}\n客人：${reservation.guestName}\n房间：${roomInfo}`,
         }
+        console.log('📝 [Redux] 添加删除预订日志:', log)
         state.operationLogs.push(log)
+        console.log('📝 [Redux] 当前日志总数:', state.operationLogs.length)
       }
     },
 
@@ -325,7 +337,9 @@ const calendarSlice = createSlice({
 
     // 恢复持久化状态
     restoreState: (state, action: PayloadAction<CalendarState>) => {
-      console.log('✅ [Redux] 恢复持久化状态:', action.payload)
+      console.log('✅ [Redux] 恢复持久化状态')
+      console.log('📝 [Redux] 恢复的operationLogs数量:', action.payload.operationLogs?.length || 0)
+      console.log('📝 [Redux] 恢复的reservations数量:', action.payload.reservations?.length || 0)
       // 确保所有必需字段都存在（兼容旧版本数据）
       return {
         ...action.payload,

@@ -14,7 +14,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useRouter, useFocusEffect } from 'expo-router'
 import { DateWheelPicker } from '../components/DateWheelPicker'
 import { useAppSelector, useAppDispatch } from '../store/hooks'
 import { FEATURE_FLAGS } from '../config/environment'
@@ -42,6 +42,7 @@ interface DateData {
       guestName?: string
       guestPhone?: string
       channel?: string
+      source?: string // 兼容后端source字段
     }
   }
 }
@@ -100,6 +101,7 @@ export default function CalendarScreen() {
   const isScrollingProgrammatically = useRef(false)
   const lastScrollX = useRef(0)
   const scrollSyncTimeout = useRef<any>(null)
+  const hasMountedRef = useRef(false)
   
   // 从Redux获取数据
   const reduxRooms = useAppSelector(state => state.calendar.rooms)
@@ -199,11 +201,15 @@ export default function CalendarScreen() {
             // 查找预订信息
             const reservation = reduxReservations.find(r => r.id === roomStatus.reservationId)
             if (reservation) {
+              const channelValue = reservation.channel || (reservation as any).source || '直订'
+              console.log(`📝 [Calendar] 预订渠道信息 - reservationId: ${roomStatus.reservationId}, channel: ${reservation.channel}, source: ${(reservation as any).source}, 最终显示: ${channelValue}`)
+              
               rooms[room.id] = {
                 status: 'occupied', // 统一显示为occupied
                 guestName: reservation.guestName,
                 guestPhone: reservation.guestPhone,
-                channel: reservation.channel,
+                channel: channelValue,
+                source: (reservation as any).source, // 保存source字段
               }
             } else {
               console.warn(`⚠️ [Calendar] 未找到预订: date=${dateStr}, roomId=${room.id}, reservationId=${roomStatus.reservationId}`)
@@ -375,7 +381,7 @@ export default function CalendarScreen() {
   }
 
   // 从API加载数据
-  const loadDataFromAPI = async (showLoading = true, clearCache = false) => {
+  const loadDataFromAPI = React.useCallback(async (showLoading = true, clearCache = false) => {
     try {
       if (showLoading) {
         setIsLoading(true)
@@ -463,7 +469,7 @@ export default function CalendarScreen() {
       setIsLoading(false)
       setIsRefreshing(false)
     }
-  }
+  }, [startDate, dispatch])
   
   // 刷新数据（清除缓存）
   const handleRefresh = async () => {
@@ -471,12 +477,22 @@ export default function CalendarScreen() {
     await loadDataFromAPI(false, true)
   }
   
-  // 初始加载数据
-  useEffect(() => {
-    console.log('📅 [Calendar] 组件挂载，加载数据')
-    loadDataFromAPI(true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // 只在组件挂载时执行一次
+  // 页面获得焦点时刷新数据（包括首次加载和从其他页面返回）
+  useFocusEffect(
+    React.useCallback(() => {
+      // 首次挂载时加载数据
+      if (!hasMountedRef.current) {
+        console.log('📅 [Calendar] 首次加载数据')
+        hasMountedRef.current = true
+        loadDataFromAPI(true, false) // 不清除缓存
+        return
+      }
+      
+      // 从其他页面返回时，清除缓存并重新加载
+      console.log('📅 [Calendar] 从其他页面返回，刷新数据')
+      loadDataFromAPI(false, true) // 清除缓存
+    }, [loadDataFromAPI])
+  )
 
   // 回到今日
   const handleBackToToday = () => {
@@ -532,6 +548,15 @@ export default function CalendarScreen() {
       console.log('📝 [Calendar] 查找到的预订:', reservation)
       
       if (reservation) {
+        // 格式化日期为 YYYY-MM-DD
+        const formatDate = (dateStr: string) => {
+          try {
+            return dateStr.split('T')[0]
+          } catch {
+            return dateStr
+          }
+        }
+        
         // 计算nights
         const checkIn = new Date(reservation.checkInDate)
         const checkOut = new Date(reservation.checkOutDate)
@@ -545,8 +570,8 @@ export default function CalendarScreen() {
             guestName: reservation.guestName || '未知',
             guestPhone: reservation.guestPhone || '',
             channel: reservation.source || reservation.channel || '直订',
-            checkInDate: reservation.checkInDate,
-            checkOutDate: reservation.checkOutDate,
+            checkInDate: formatDate(reservation.checkInDate),
+            checkOutDate: formatDate(reservation.checkOutDate),
             roomType: reservation.room?.roomType || reservation.roomType || '未知房型',
             roomPrice: (reservation.roomPrice || reservation.roomRate || 0).toString(),
             guestCount: (reservation.guestCount || 1).toString(),
@@ -1017,10 +1042,13 @@ export default function CalendarScreen() {
                             {isOccupied && roomData && (
                               <View style={styles.reservationInfo}>
                                 <Text style={styles.reservationGuestName} numberOfLines={1}>
-                                  {roomData.guestName}
+                                  {roomData.guestName || '未知'}
                                 </Text>
                                 <Text style={styles.reservationChannel} numberOfLines={1}>
-                                  {roomData.channel}
+                                  {roomData.channel || roomData.source || '直订'}
+                                </Text>
+                                <Text style={styles.reservationPhone} numberOfLines={1}>
+                                  {roomData.guestPhone || ''}
                                 </Text>
                               </View>
                             )}
@@ -1408,6 +1436,10 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#666',
     marginBottom: 2,
+  },
+  reservationPhone: {
+    fontSize: 10,
+    color: '#999',
   },
   checkmarkContainer: {
     position: 'absolute',

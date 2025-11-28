@@ -23,24 +23,44 @@ export default function OrderDetailsScreen() {
   const dispatch = useAppDispatch()
   const params = useLocalSearchParams()
   
+  // 格式化日期为 YYYY-MM-DD
+  const formatDate = (dateStr: string | string[]) => {
+    if (!dateStr) return ''
+    const str = Array.isArray(dateStr) ? dateStr[0] : dateStr
+    try {
+      const date = new Date(str)
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    } catch {
+      return str
+    }
+  }
+  
   const {
     orderId,
     reservationId, // 新增：预订ID（优先使用）
     guestName,
     guestPhone,
     channel,
-    checkInDate,
-    checkOutDate,
+    checkInDate: rawCheckInDate,
+    checkOutDate: rawCheckOutDate,
     roomType,
     roomPrice,
     guestCount,
     nights,
     totalAmount,
   } = params
+  
+  // 格式化日期
+  const checkInDate = formatDate(rawCheckInDate as string)
+  const checkOutDate = formatDate(rawCheckOutDate as string)
 
-  // 从Redux获取预订和支付数据
+  // 从Redux获取预订、支付和房间数据
   const reservations = useAppSelector(state => state.calendar.reservations)
   const payments = useAppSelector(state => state.calendar.payments)
+  const rooms = useAppSelector(state => state.calendar.rooms)
   
   // 查找当前订单（优先使用 reservationId，兼容旧代码使用 orderId）
   const currentReservation = useMemo(() => {
@@ -83,7 +103,26 @@ export default function OrderDetailsScreen() {
     }
   }, [currentReservation, payments, orderId])
 
-  const [orderStatus, setOrderStatus] = useState(currentReservation?.status || '进行中')
+  // 状态翻译函数
+  const getStatusText = (status: string) => {
+    const statusMap: Record<string, string> = {
+      'PENDING': '待确认',
+      'CONFIRMED': '已确认',
+      'CHECKED_IN': '已入住',
+      'CHECKED_OUT': '已退房',
+      'CANCELLED': '已取消',
+      'pending': '待确认',
+      'confirmed': '已确认',
+      'checked_in': '已入住',
+      'checked-in': '已入住',
+      'checked_out': '已退房',
+      'checked-out': '已退房',
+      'cancelled': '已取消',
+    }
+    return statusMap[status] || '进行中'
+  }
+  
+  const [orderStatus, setOrderStatus] = useState(getStatusText(currentReservation?.status || ''))
   const [menuVisible, setMenuVisible] = useState(false)
   const [reminders, setReminders] = useState<Array<{id: string, content: string, time: string}>>([])
   const [reminderModalVisible, setReminderModalVisible] = useState(false)
@@ -93,6 +132,20 @@ export default function OrderDetailsScreen() {
 
   const remainingAmount = Number(totalAmount) - paidAmount
   const totalReceivable = Number(totalAmount) + otherFees
+  
+  // 获取完整的房间信息
+  const getRoomDisplayName = () => {
+    if (currentReservation?.roomId) {
+      const room = rooms.find(r => r.id === currentReservation.roomId)
+      if (room) {
+        return `${room.type} - ${room.name}`
+      }
+    }
+    // 如果找不到房间，使用传入的roomType
+    return roomType as string || '未知房间'
+  }
+  
+  const displayRoomName = getRoomDisplayName()
 
   // 拨打电话
   const handleCall = () => {
@@ -178,7 +231,8 @@ export default function OrderDetailsScreen() {
     router.push({
       pathname: '/operation-logs',
       params: {
-        orderId,
+        orderId: currentReservation?.orderId || currentReservation?.id || orderId, // 优先使用实际的orderId
+        reservationId: reservationId || orderId, // 也传递reservationId
       }
     })
   }
@@ -279,6 +333,8 @@ export default function OrderDetailsScreen() {
                 router.push({
                   pathname: '/edit-order',
                   params: {
+                    reservationId: reservationId || orderId, // 优先使用reservationId
+                    roomId: currentReservation?.roomId || '', // 传递房间ID
                     orderId,
                     guestName,
                     guestPhone,
@@ -424,9 +480,9 @@ export default function OrderDetailsScreen() {
         {/* 房间信息 */}
         <View style={styles.card}>
           <View style={styles.roomHeader}>
-            <Text style={styles.roomTitle}>{roomType}</Text>
+            <Text style={styles.roomTitle}>{displayRoomName}</Text>
             <View style={styles.roomStatusBadge}>
-              <Text style={styles.roomStatusText}>已入住</Text>
+              <Text style={styles.roomStatusText}>{orderStatus}</Text>
             </View>
           </View>
           

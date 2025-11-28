@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -8,9 +9,10 @@ import {
   Dimensions,
   RefreshControl,
 } from 'react-native';
-import { useAppSelector } from '../store/hooks';
+import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 import { dataService } from '../services/dataService';
+import { setRooms, setReservations, setRoomStatuses } from '../store/calendarSlice';
 
 const { width } = Dimensions.get('window');
 
@@ -20,10 +22,64 @@ export default function StatisticsScreen() {
   const [selectedPeriod, setSelectedPeriod] = useState<StatPeriod>('day');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [refreshing, setRefreshing] = useState(false);
+  const dispatch = useAppDispatch();
   
   // 从Redux获取预订数据
   const reservations = useAppSelector(state => state.calendar.reservations);
   const rooms = useAppSelector(state => state.calendar.rooms);
+
+  // 加载数据
+  const loadData = useCallback(async () => {
+    // 如果已经有数据，跳过加载
+    if (reservations.length > 0) {
+      console.log('📊 [统计] 数据已存在，跳过加载');
+      return;
+    }
+    
+    try {
+      console.log('📊 [统计] 开始加载数据...');
+      
+      // 计算日期范围（今天往前90天，往后30天）
+      const today = new Date();
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() - 90);
+      const endDate = new Date(today);
+      endDate.setDate(today.getDate() + 30);
+      
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+      
+      // 并行加载数据
+      const [roomsData, reservationsData, roomStatusesData] = await Promise.all([
+        dataService.rooms.getAll(),
+        dataService.reservations.getAll({
+          startDate: startDateStr,
+          endDate: endDateStr,
+        }),
+        dataService.roomStatus.getByDateRange(startDateStr, endDateStr)
+      ]);
+      
+      console.log('📊 [统计] 数据加载完成:', {
+        rooms: roomsData.length,
+        reservations: reservationsData.length,
+      });
+      
+      // 更新Redux
+      dispatch(setRooms(roomsData));
+      dispatch(setReservations(reservationsData));
+      dispatch(setRoomStatuses(Array.isArray(roomStatusesData) ? roomStatusesData : []));
+    } catch (error) {
+      console.error('❌ [统计] 数据加载失败:', error);
+    }
+  }, [reservations.length, dispatch]);
+  
+  // 页面获得焦点时加载数据
+  useFocusEffect(
+    useCallback(() => {
+      console.log('📊 [统计] 页面获得焦点');
+      loadData();
+    }, [loadData])
+  );
 
   // 下拉刷新处理
   const onRefresh = async () => {
@@ -31,7 +87,8 @@ export default function StatisticsScreen() {
     try {
       console.log('🔄 [统计] 下拉刷新，清除缓存...');
       await dataService.cache.clearAll();
-      console.log('✅ [统计] 缓存已清除，数据将从服务器重新加载');
+      console.log('✅ [统计] 缓存已清除，重新加载数据...');
+      await loadData();
     } catch (error) {
       console.error('❌ [统计] 刷新失败:', error);
     } finally {
@@ -41,57 +98,87 @@ export default function StatisticsScreen() {
 
   // 计算统计数据
   const statistics = useMemo(() => {
+    console.log('📊 [统计] 开始计算统计数据...');
+    console.log('📊 [统计] 预订总数:', reservations.length);
+    console.log('📊 [统计] 房间总数:', rooms.length);
+    
     const now = new Date();
-    let filteredReservations = reservations;
+    let filteredReservations = reservations.map((r: any) => r); // 类型断言
+
+    // 格式化日期为 YYYY-MM-DD
+    const formatDateStr = (dateStr: string) => {
+      try {
+        const date = new Date(dateStr);
+        return date.toISOString().split('T')[0];
+      } catch {
+        return dateStr;
+      }
+    };
 
     // 根据时间周期筛选
     if (selectedPeriod === 'day') {
       const dateStr = selectedDate.toISOString().split('T')[0];
-      filteredReservations = reservations.filter(r => 
-        r.checkInDate <= dateStr && r.checkOutDate > dateStr
-      );
+      filteredReservations = reservations.filter((r: any) => {
+        const checkIn = formatDateStr(r.checkInDate);
+        const checkOut = formatDateStr(r.checkOutDate);
+        return checkIn <= dateStr && checkOut > dateStr;
+      });
+      console.log('📊 [统计] 按日筛选:', dateStr, '结果数:', filteredReservations.length);
     } else if (selectedPeriod === 'month') {
       const year = selectedDate.getFullYear();
       const month = selectedDate.getMonth() + 1;
-      filteredReservations = reservations.filter(r => {
+      filteredReservations = reservations.filter((r: any) => {
         const checkIn = new Date(r.checkInDate);
         return checkIn.getFullYear() === year && checkIn.getMonth() + 1 === month;
       });
+      console.log('📊 [统计] 按月筛选:', `${year}-${month}`, '结果数:', filteredReservations.length);
     } else if (selectedPeriod === 'year') {
       const year = selectedDate.getFullYear();
-      filteredReservations = reservations.filter(r => {
+      filteredReservations = reservations.filter((r: any) => {
         const checkIn = new Date(r.checkInDate);
         return checkIn.getFullYear() === year;
       });
+      console.log('📊 [统计] 按年筛选:', year, '结果数:', filteredReservations.length);
     }
 
     // 总营收
-    const totalRevenue = filteredReservations.reduce((sum, r) => sum + (r.totalAmount || 0), 0);
+    const totalRevenue = filteredReservations.reduce((sum, r: any) => sum + (Number(r.totalAmount) || 0), 0);
 
     // 订单数
     const orderCount = filteredReservations.length;
 
     // 按渠道统计
-    const channelStats = filteredReservations.reduce((acc, r) => {
-      const channel = r.channel || '未知';
+    const channelStats = filteredReservations.reduce((acc, r: any) => {
+      const channel = r.source || r.channel || '直订'; // 兼容source和channel
       if (!acc[channel]) {
         acc[channel] = { count: 0, revenue: 0 };
       }
       acc[channel].count += 1;
-      acc[channel].revenue += r.totalAmount || 0;
+      acc[channel].revenue += Number(r.totalAmount) || 0;
       return acc;
     }, {} as Record<string, { count: number; revenue: number }>);
 
     // 按房间统计
-    const roomStats = filteredReservations.reduce((acc, r) => {
+    const roomStats = filteredReservations.reduce((acc, r: any) => {
       const roomId = r.roomId || '未知';
+      // 从房间列表查找房间信息
+      const room = rooms.find(room => room.id === roomId);
+      const roomName = room?.name || r.roomNumber || r.room?.name || '未知房间';
+      
       if (!acc[roomId]) {
-        acc[roomId] = { count: 0, revenue: 0, roomNumber: r.roomNumber };
+        acc[roomId] = { count: 0, revenue: 0, roomNumber: roomName };
       }
       acc[roomId].count += 1;
-      acc[roomId].revenue += r.totalAmount || 0;
+      acc[roomId].revenue += Number(r.totalAmount) || 0;
       return acc;
     }, {} as Record<string, { count: number; revenue: number; roomNumber: string }>);
+
+    console.log('📊 [统计] 计算结果:', {
+      totalRevenue,
+      orderCount,
+      channelCount: Object.keys(channelStats).length,
+      roomCount: Object.keys(roomStats).length,
+    });
 
     return {
       totalRevenue,
@@ -99,7 +186,7 @@ export default function StatisticsScreen() {
       channelStats,
       roomStats,
     };
-  }, [reservations, selectedPeriod, selectedDate]);
+  }, [reservations, rooms, selectedPeriod, selectedDate]);
 
   const formatDate = (date: Date) => {
     if (selectedPeriod === 'day') {
@@ -189,23 +276,46 @@ export default function StatisticsScreen() {
         </View>
 
         {/* 营收趋势图 */}
-        {selectedPeriod === 'month' && (
+        {selectedPeriod === 'month' && (() => {
+          // 计算每日真实营收
+          const year = selectedDate.getFullYear();
+          const month = selectedDate.getMonth() + 1;
+          const daysInMonth = new Date(year, month, 0).getDate();
+          
+          // 初始化每日营收为0
+          const dailyRevenue: number[] = new Array(daysInMonth).fill(0);
+          
+          // 统计每日营收
+          reservations.forEach((r: any) => {
+            const checkIn = new Date(r.checkInDate);
+            if (checkIn.getFullYear() === year && checkIn.getMonth() + 1 === month) {
+              const day = checkIn.getDate();
+              if (day >= 1 && day <= daysInMonth) {
+                dailyRevenue[day - 1] += Number(r.totalAmount) || 0;
+              }
+            }
+          });
+          
+          // 选择采样点（显示7个点）
+          const samplePoints = [1, 5, 10, 15, 20, 25, Math.min(30, daysInMonth)];
+          const labels = samplePoints.map(d => `${d}日`);
+          const data = samplePoints.map(d => dailyRevenue[d - 1] || 0);
+          
+          // 确保至少有一个非零值，否则图表会报错
+          const hasData = data.some(v => v > 0);
+          const chartData = hasData ? data : [0, 0, 0, 0, 0, 0, 1];
+          
+          console.log('📊 [统计] 营收趋势:', { year, month, daysInMonth, samplePoints, data });
+          
+          return (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>营收趋势</Text>
             <LineChart
               data={{
-                labels: ['1日', '5日', '10日', '15日', '20日', '25日', '30日'],
+                  labels: labels,
                 datasets: [
                   {
-                    data: [
-                      Math.random() * 5000 + 1000,
-                      Math.random() * 5000 + 1000,
-                      Math.random() * 5000 + 1000,
-                      Math.random() * 5000 + 1000,
-                      Math.random() * 5000 + 1000,
-                      Math.random() * 5000 + 1000,
-                      Math.random() * 5000 + 1000,
-                    ],
+                      data: chartData,
                   },
                 ],
               }}
@@ -235,7 +345,8 @@ export default function StatisticsScreen() {
               }}
             />
           </View>
-        )}
+          );
+        })()}
 
         {/* 渠道分布饼图 */}
         {Object.entries(statistics.channelStats).length > 0 && (

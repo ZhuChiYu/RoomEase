@@ -9,10 +9,13 @@ import {
   StatusBar,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { useAppSelector } from './store/hooks';
+import { useAppSelector, useAppDispatch } from './store/hooks';
+import { setRooms } from './store/calendarSlice';
+import { dataService } from './services/dataService';
 
 export default function RoomTypeSettingsScreen() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
   
   // 从Redux获取房型和房间数据
   const roomTypes = useAppSelector(state => state.calendar.roomTypes);
@@ -23,9 +26,17 @@ export default function RoomTypeSettingsScreen() {
 
   // 计算每个房型的房间数量
   const roomTypesWithRoomCount = useMemo(() => {
+    console.log('🔄 [房型设置] 重新计算房型房间数量...');
+    console.log('📊 [房型设置] roomTypes数量:', roomTypes.length);
+    console.log('📊 [房型设置] rooms总数:', rooms.length);
+    
     return roomTypes.map(roomType => {
-      const roomCount = rooms.filter(room => room.type === roomType.name).length;
-      const roomIds = rooms.filter(room => room.type === roomType.name).map(room => room.id);
+      const typeRooms = rooms.filter(room => room.type === roomType.name);
+      const roomCount = typeRooms.length;
+      const roomIds = typeRooms.map(room => room.id);
+      
+      console.log(`📊 [房型设置] ${roomType.name}: ${roomCount}间房`, typeRooms.map(r => r.name));
+      
       return {
         ...roomType,
         roomCount,
@@ -34,11 +45,25 @@ export default function RoomTypeSettingsScreen() {
     });
   }, [roomTypes, rooms]);
 
-  // 页面获得焦点时重新记录数据状态
+  // 页面获得焦点时强制从API重新加载房间数据
   useFocusEffect(
     useCallback(() => {
-      console.log('📱 [房型设置] 页面获得焦点，当前房型数量:', roomTypes.length);
-    }, [roomTypes])
+      console.log('📱 [房型设置] 页面获得焦点，准备刷新房间数据');
+      
+      const loadRooms = async () => {
+        try {
+          console.log('🌐 [房型设置] 从API重新加载房间列表...');
+          const updatedRooms = await dataService.rooms.getAll();
+          dispatch(setRooms(updatedRooms));
+          console.log('✅ [房型设置] 房间数据已刷新，共', updatedRooms.length, '个房间');
+          console.log('📋 [房型设置] 房间详情:', updatedRooms.map(r => ({ id: r.id, name: r.name, type: r.type })));
+        } catch (error) {
+          console.error('❌ [房型设置] 加载房间失败:', error);
+        }
+      };
+      
+      loadRooms();
+    }, [dispatch])
   );
 
   const handleAddRoomType = () => {

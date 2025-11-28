@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useAppDispatch, useAppSelector } from './store/hooks';
-import { saveRoomType, deleteRoomType as deleteRoomTypeAction, addRoomsToType, deleteRoom } from './store/calendarSlice';
+import { saveRoomType, deleteRoomType as deleteRoomTypeAction, addRoomsToType, deleteRoom, setRooms } from './store/calendarSlice';
 import type { RoomType } from './store/types';
 import { dataService } from './services/dataService';
 import { authService } from './services/authService';
@@ -49,17 +49,23 @@ export default function EditRoomTypeScreen() {
     );
   }, [allRooms, existingRoomIds, isEditMode, formData.name]);
   
+  // 判断房间是否已在后端创建（UUID格式的ID）
+  const isBackendRoom = (roomId: string): boolean => {
+    // 后端生成的ID是长UUID格式（如 "cmiilgfiu000nc9ovvh33ogsw"）
+    // 前端临时ID是短字符串或数字（如 "1230", "pending_xxx"）
+    return roomId.length > 20 && !roomId.startsWith('pending_')
+  }
+
   // 组合显示：已保存的房间 + 待保存的新房间
   const currentRooms = useMemo(() => {
     const rooms = [...savedRooms];
-    const existingIds = new Set(rooms.map(r => r.id));
+    const existingNames = new Set(rooms.map(r => r.name)); // 使用房间名而不是ID
     
     // 添加待保存的新房间（临时对象，仅用于显示）
-    // 使用唯一ID避免key冲突
     pendingNewRooms.forEach((roomName, index) => {
-      // 如果房间名已存在于已保存的房间中，跳过
-      if (existingIds.has(roomName)) {
-        console.log('⚠️ [EditRoomType] 房间已存在，跳过:', roomName);
+      // 如果房间名已存在，跳过
+      if (existingNames.has(roomName)) {
+        console.log('⚠️ [EditRoomType] 房间名已存在，跳过:', roomName);
         return;
       }
       
@@ -74,7 +80,7 @@ export default function EditRoomTypeScreen() {
       savedRoomsCount: savedRooms.length,
       pendingNewRoomsCount: pendingNewRooms.length,
       totalCount: rooms.length,
-      rooms: rooms.map(r => ({ id: r.id, name: r.name }))
+      rooms: rooms.map(r => ({ id: r.id, name: r.name, isBackend: isBackendRoom(r.id) }))
     });
     return rooms;
   }, [savedRooms, pendingNewRooms, formData.name]);
@@ -245,8 +251,30 @@ export default function EditRoomTypeScreen() {
       dispatch(saveRoomType(roomTypeData));
       console.log('💾 房型已保存到Redux:', roomTypeData);
       
-      // 2. 如果有待保存的新房间，调用API创建房间
-      if (pendingNewRooms.length > 0) {
+      // 2. 找出所有需要创建到后端的房间（包括临时ID的房间和pendingNewRooms）
+      const roomsToCreate: string[] = []
+      
+      // 检查currentRooms中的临时ID房间
+      currentRooms.forEach(room => {
+        if (!isBackendRoom(room.id)) {
+          // 非后端ID，需要创建
+          if (!roomsToCreate.includes(room.name)) {
+            roomsToCreate.push(room.name)
+          }
+        }
+      })
+      
+      // 添加pendingNewRooms
+      pendingNewRooms.forEach(name => {
+        if (!roomsToCreate.includes(name)) {
+          roomsToCreate.push(name)
+        }
+      })
+      
+      console.log('🔍 [EditRoomType] 需要创建到后端的房间:', roomsToCreate)
+      
+      // 如果有需要创建的房间，调用API
+      if (roomsToCreate.length > 0) {
         console.log('🌐 开始创建房间到云服务...');
         
         // 获取用户的propertyId
@@ -258,7 +286,7 @@ export default function EditRoomTypeScreen() {
         console.log('📋 [EditRoomType] 使用propertyId:', propertyId);
         
         // 为每个房间调用API
-        for (const roomName of pendingNewRooms) {
+        for (const roomName of roomsToCreate) {
           const roomData = {
             name: roomName,
             code: roomName, // 使用房间名作为code
@@ -273,7 +301,7 @@ export default function EditRoomTypeScreen() {
           
           try {
             const createdRoom = await dataService.rooms.create(roomData);
-            console.log('✅ [EditRoomType] 房间已创建到云服务:', createdRoom.id);
+            console.log('✅ [EditRoomType] 房间已创建到云服务:', createdRoom.id, roomName);
           } catch (error: any) {
             console.error('❌ [EditRoomType] 创建房间失败:', roomName, error);
             // 如果是401认证错误，提示用户登录
@@ -284,12 +312,13 @@ export default function EditRoomTypeScreen() {
           }
         }
         
-        // 所有房间创建成功后，更新Redux
-        dispatch(addRoomsToType({
-          roomTypeName: formData.name,
-          roomNames: pendingNewRooms
-        }));
-        console.log('✅ 所有房间已创建到云服务并更新Redux');
+        console.log('✅ 所有房间已创建到云服务');
+        
+        // 重新加载房间列表，获取后端真实ID（传入propertyId确保使用正确的缓存键）
+        const updatedRooms = await dataService.rooms.getAll(propertyId)
+        dispatch(setRooms(updatedRooms))
+        console.log('✅ 房间列表已更新到Redux，共', updatedRooms.length, '个房间')
+        console.log('📋 [EditRoomType] 更新后的房间:', updatedRooms.map(r => `${r.name}(${r.id})`).join(', '))
       }
       
       const message = isEditMode 

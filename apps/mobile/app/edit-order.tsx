@@ -14,19 +14,39 @@ import {
 } from 'react-native'
 import { useRouter, useLocalSearchParams } from 'expo-router'
 import { DateWheelPicker } from './components/DateWheelPicker'
-import { useAppDispatch } from './store/hooks'
+import { useAppDispatch, useAppSelector } from './store/hooks'
+import { dataService } from './services/dataService'
+import { setReservations } from './store/calendarSlice'
 
 export default function EditOrderScreen() {
   const router = useRouter()
   const dispatch = useAppDispatch()
   const params = useLocalSearchParams()
   
+  // 从Redux获取真实房间数据和预订数据
+  const reduxRooms = useAppSelector(state => state.calendar.rooms)
+  const reduxReservations = useAppSelector(state => state.calendar.reservations)
+  
+  // 格式化日期为 YYYY-MM-DD
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return ''
+    try {
+      const date = new Date(dateStr)
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    } catch {
+      return dateStr
+    }
+  }
+  
   const [formData, setFormData] = useState({
     guestName: (params.guestName as string) || '',
     guestPhone: (params.guestPhone as string) || '',
     channel: (params.channel as string) || '自来客',
-    checkInDate: (params.checkInDate as string) || '',
-    checkOutDate: (params.checkOutDate as string) || '',
+    checkInDate: formatDate((params.checkInDate as string) || ''),
+    checkOutDate: formatDate((params.checkOutDate as string) || ''),
     roomType: (params.roomType as string) || '',
     roomPrice: parseFloat(params.roomPrice as string) || 0,
     guestCount: parseInt(params.guestCount as string) || 0,
@@ -52,16 +72,10 @@ export default function EditOrderScreen() {
   const totalAmount = formData.roomPrice
 
   // 渠道选项
-  const channels = ['自来客', '携程', '美团', '飞猪', '去哪儿', 'Booking', '电话预订', '其他']
+  const channels = ['自来客', '携程', '美团', '飞猪', '去哪儿', 'Booking', '小猪', '途家', '蚂蚁短租', '同程旅行', '电话预订', '其他']
   
-  // 房间选项
-  const rooms = [
-    '大床房-1202',
-    '大床房-1203',
-    '双人房-12345',
-    '豪华房-1301',
-    '套房-1401',
-  ]
+  // 从Redux获取真实房间列表，格式化为 "房间名 - 房型"
+  const rooms = reduxRooms.map(room => `${room.type}-${room.name}`)
 
   // 处理日期选择
   const handleDateSelect = (date: string) => {
@@ -96,7 +110,7 @@ export default function EditOrderScreen() {
   }
 
   // 保存修改
-  const handleSaveOrder = () => {
+  const handleSaveOrder = async () => {
     if (!formData.guestName.trim()) {
       Alert.alert('提示', '请输入客人姓名')
       return
@@ -106,16 +120,85 @@ export default function EditOrderScreen() {
       return
     }
     
-    Alert.alert(
-      '保存成功',
-      '订单已更新',
-      [
-        {
-          text: '确定',
-          onPress: () => router.back()
+    try {
+      const reservationId = params.reservationId as string
+      
+      if (!reservationId) {
+        Alert.alert('错误', '无法获取预订ID')
+        return
+      }
+      
+      console.log('🔄 [修改订单] 开始更新预订:', reservationId)
+      
+      // 从 roomType (格式: "双床房-1234") 提取房间ID
+      let roomId = params.roomId as string
+      
+      // 如果选择了新房间，从房间列表查找
+      if (formData.roomType) {
+        // formData.roomType 格式: "房型-房间名"
+        const [type, name] = formData.roomType.split('-')
+        const selectedRoom = reduxRooms.find(r => r.type === type && r.name === name)
+        if (selectedRoom) {
+          roomId = selectedRoom.id
+          console.log('✅ [修改订单] 找到新房间:', { roomId, name: selectedRoom.name, type: selectedRoom.type })
         }
-      ]
-    )
+      }
+      
+      // 构造更新数据
+      const updateData: any = {
+        guestName: formData.guestName,
+        guestPhone: formData.guestPhone,
+        source: formData.channel,
+        checkInDate: formData.checkInDate,
+        checkOutDate: formData.checkOutDate,
+        roomRate: formData.roomPrice,
+        totalAmount: formData.roomPrice * nights,
+        guestCount: formData.guestCount,
+      }
+      
+      // 如果房间发生变化，添加 roomId
+      if (roomId) {
+        updateData.roomId = roomId
+      }
+      
+      console.log('📤 [修改订单] 更新数据:', updateData)
+      
+      // 调用API更新预订
+      await dataService.reservations.update(reservationId, updateData)
+      
+      console.log('✅ [修改订单] 更新成功')
+      
+      // 重新加载预订列表
+      const today = new Date()
+      const startDate = new Date(today)
+      startDate.setDate(today.getDate() - 30)
+      const endDate = new Date(today)
+      endDate.setDate(today.getDate() + 30)
+      
+      const startDateStr = startDate.toISOString().split('T')[0]
+      const endDateStr = endDate.toISOString().split('T')[0]
+      
+      const updatedReservations = await dataService.reservations.getAll({
+        startDate: startDateStr,
+        endDate: endDateStr,
+      })
+      
+      dispatch(setReservations(updatedReservations))
+      
+      Alert.alert(
+        '保存成功',
+        '订单已更新',
+        [
+          {
+            text: '确定',
+            onPress: () => router.back()
+          }
+        ]
+      )
+    } catch (error) {
+      console.error('❌ [修改订单] 更新失败:', error)
+      Alert.alert('错误', '保存失败：' + (error as Error).message)
+    }
   }
 
   return (

@@ -14,16 +14,37 @@ import { useAppSelector } from './store/hooks'
 export default function OperationLogsScreen() {
   const router = useRouter()
   const params = useLocalSearchParams()
-  const { orderId } = params
+  const { orderId, reservationId } = params
 
   // 从Redux获取操作日志
   const allLogs = useAppSelector(state => state.calendar.operationLogs)
   
+  console.log('📋 [操作日志] 所有日志数量:', allLogs.length)
+  console.log('📋 [操作日志] 传入的参数:', { orderId, reservationId })
+  
   // 过滤当前订单的日志
   const logs = useMemo(() => {
-    if (!orderId) return allLogs
-    return allLogs.filter(log => log.orderId === orderId).reverse()
-  }, [allLogs, orderId])
+    if (!orderId && !reservationId) {
+      console.log('📋 [操作日志] 没有过滤条件，显示所有日志')
+      return allLogs.reverse()
+    }
+    
+    // 尝试用 orderId 或 reservationId 过滤
+    const filtered = allLogs.filter(log => {
+      const matchOrderId = orderId && log.orderId === orderId
+      const matchReservationId = reservationId && log.orderId === reservationId
+      return matchOrderId || matchReservationId
+    })
+    
+    console.log('📋 [操作日志] 过滤后日志数量:', filtered.length)
+    console.log('📋 [操作日志] 日志详情:', filtered.map(l => ({ 
+      orderId: l.orderId, 
+      action: l.action,
+      details: l.details 
+    })))
+    
+    return filtered.reverse()
+  }, [allLogs, orderId, reservationId])
 
   return (
     <View style={styles.container}>

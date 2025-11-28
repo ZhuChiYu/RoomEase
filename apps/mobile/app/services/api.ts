@@ -369,11 +369,15 @@ export const api = {
       return response.data
     },
     update: async (id: string, reservationData: any) => {
-      const response = await apiClient.put(`/reservations/${id}`, reservationData)
+      const response = await apiClient.patch(`/reservations/${id}`, reservationData)
       return response.data
     },
     cancel: async (id: string) => {
       const response = await apiClient.post(`/reservations/${id}/cancel`)
+      return response.data
+    },
+    delete: async (id: string) => {
+      const response = await apiClient.delete(`/reservations/${id}`)
       return response.data
     },
     checkIn: async (id: string) => {

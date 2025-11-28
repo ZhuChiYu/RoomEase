@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
+import { useFocusEffect } from '@react-navigation/native'
 import {
   View,
   Text,
@@ -13,9 +14,10 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { DateWheelPicker } from '../components/DateWheelPicker'
-import { useAppSelector } from '../store/hooks'
+import { useAppSelector, useAppDispatch } from '../store/hooks'
 import { authStorage } from '../services/storage'
 import { dataService } from '../services/dataService'
+import { setRooms, setReservations, setRoomStatuses } from '../store/calendarSlice'
 
 const { width } = Dimensions.get('window')
 
@@ -112,11 +114,71 @@ export default function HomeScreen() {
 
   // 下拉刷新状态
   const [refreshing, setRefreshing] = useState(false)
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
+  const dispatch = useAppDispatch()
 
   // 加载用户信息
   useEffect(() => {
     loadUserInfo()
   }, [])
+  
+  // 加载数据（当页面获得焦点且数据为空时）
+  const loadData = useCallback(async () => {
+    // 如果已经有数据，且不是初次加载，则跳过
+    if (!isInitialLoad && reservations.length > 0) {
+      console.log('🏠 [首页] 数据已存在，跳过加载')
+      return
+    }
+    
+    try {
+      console.log('🏠 [首页] 开始加载数据...')
+      
+      // 计算日期范围（今天往前7天，往后30天）
+      const today = new Date()
+      const startDate = new Date(today)
+      startDate.setDate(today.getDate() - 7)
+      const endDate = new Date(today)
+      endDate.setDate(today.getDate() + 30)
+      
+      const startDateStr = startDate.toISOString().split('T')[0]
+      const endDateStr = endDate.toISOString().split('T')[0]
+      
+      console.log('🏠 [首页] 加载日期范围:', { startDateStr, endDateStr })
+      
+      // 并行加载数据
+      const [roomsData, reservationsData, roomStatusesData] = await Promise.all([
+        dataService.rooms.getAll(),
+        dataService.reservations.getAll({
+          startDate: startDateStr,
+          endDate: endDateStr,
+        }),
+        dataService.roomStatus.getByDateRange(startDateStr, endDateStr)
+      ])
+      
+      console.log('🏠 [首页] 数据加载完成:', {
+        rooms: roomsData.length,
+        reservations: reservationsData.length,
+        roomStatuses: Array.isArray(roomStatusesData) ? roomStatusesData.length : 0
+      })
+      
+      // 更新Redux
+      dispatch(setRooms(roomsData))
+      dispatch(setReservations(reservationsData))
+      dispatch(setRoomStatuses(Array.isArray(roomStatusesData) ? roomStatusesData : []))
+      
+      setIsInitialLoad(false)
+    } catch (error) {
+      console.error('❌ [首页] 数据加载失败:', error)
+    }
+  }, [isInitialLoad, reservations.length, dispatch])
+  
+  // 页面获得焦点时加载数据
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🏠 [首页] 页面获得焦点')
+      loadData()
+    }, [loadData])
+  )
 
   const loadUserInfo = async () => {
     const savedUserInfo = await authStorage.getUserInfo()
@@ -135,7 +197,11 @@ export default function HomeScreen() {
       console.log('🔄 [首页] 下拉刷新，清除缓存...')
       // 清除所有缓存
       await dataService.cache.clearAll()
-      console.log('✅ [首页] 缓存已清除，数据将从服务器重新加载')
+      console.log('✅ [首页] 缓存已清除，重新加载数据...')
+      
+      // 强制重新加载数据
+      setIsInitialLoad(true)
+      await loadData()
     } catch (error) {
       console.error('❌ [首页] 刷新失败:', error)
     } finally {
@@ -161,46 +227,79 @@ export default function HomeScreen() {
   const todayData = useMemo(() => {
     const today = getLocalDateString()
     
+    console.log('🏠 [首页统计] 今天:', today)
+    console.log('🏠 [首页统计] 预订总数:', reservations.length)
+    
+    // 格式化日期为 YYYY-MM-DD（处理后端返回的ISO格式）
+    const formatDate = (dateStr: string) => {
+      try {
+        return dateStr.split('T')[0] // 提取日期部分
+      } catch {
+        return dateStr
+      }
+    }
+    
     // 今日入住：今天是入住日期的房间
-    const todayCheckIns = reservations.filter(r => r.checkInDate === today && r.status !== 'cancelled')
+    const todayCheckIns = reservations.filter((r: any) => {
+      const checkInDate = formatDate(r.checkInDate)
+      const isCancelled = r.status === 'cancelled' || r.status === 'CANCELLED'
+      const isToday = checkInDate === today
+      return isToday && !isCancelled
+    })
     const todayCheckInCount = todayCheckIns.length
     
+    console.log('🏠 [首页统计] 今日入住:', todayCheckInCount, '间')
+    
     // 今日入住费用：今天入住的所有房间费用总和
-    const todayCheckInRevenue = todayCheckIns.reduce((sum, r) => sum + (r.totalAmount || 0), 0)
+    const todayCheckInRevenue = todayCheckIns.reduce((sum, r: any) => sum + (Number(r.totalAmount) || 0), 0)
     
     // 今日退房：今天是退房日期的房间（排除连续入住的情况）
-    const todayCheckOuts = reservations.filter(r => {
-      if (r.checkOutDate !== today || r.status === 'cancelled') return false
+    const todayCheckOuts = reservations.filter((r: any) => {
+      const checkOutDate = formatDate(r.checkOutDate)
+      const isCancelled = r.status === 'cancelled' || r.status === 'CANCELLED'
+      if (checkOutDate !== today || isCancelled) return false
       
       // 检查是否有同一客人的连续订单（同一个客人、同一个房间、退房日期=入住日期）
-      const hasContinuousBooking = reservations.some(nextR => 
+      const hasContinuousBooking = reservations.some((nextR: any) => 
         nextR.id !== r.id &&
         nextR.guestPhone === r.guestPhone &&
         nextR.roomId === r.roomId &&
-        nextR.checkInDate === r.checkOutDate &&
-        nextR.status !== 'cancelled'
+        formatDate(nextR.checkInDate) === checkOutDate &&
+        nextR.status !== 'cancelled' &&
+        nextR.status !== 'CANCELLED'
       )
       
       return !hasContinuousBooking
     })
     const todayCheckOutCount = todayCheckOuts.length
     
+    console.log('🏠 [首页统计] 今日退房:', todayCheckOutCount, '间')
+    
     // 当前在住：入住日期<=今天 且 退房日期>今天
-    const currentOccupied = reservations.filter(r => {
-      return r.checkInDate <= today && r.checkOutDate > today && r.status !== 'cancelled'
+    const currentOccupied = reservations.filter((r: any) => {
+      const checkInDate = formatDate(r.checkInDate)
+      const checkOutDate = formatDate(r.checkOutDate)
+      const isCancelled = r.status === 'cancelled' || r.status === 'CANCELLED'
+      return checkInDate <= today && checkOutDate > today && !isCancelled
     }).length
+    
+    console.log('🏠 [首页统计] 当前在住:', currentOccupied, '间')
     
     // 入住率
     const occupancyRate = rooms.length > 0 ? ((currentOccupied / rooms.length) * 100).toFixed(0) : 0
     
+    console.log('🏠 [首页统计] 入住率:', occupancyRate, '%')
+    
     // 本月收入
     const currentMonth = new Date().getMonth() + 1
     const currentYear = new Date().getFullYear()
-    const monthlyRevenue = reservations.filter(r => {
+    const monthlyRevenue = reservations.filter((r: any) => {
       if (!r.checkInDate) return false
       const checkInDate = new Date(r.checkInDate)
       return checkInDate.getMonth() + 1 === currentMonth && checkInDate.getFullYear() === currentYear
-    }).reduce((sum, r) => sum + (Number(r.totalAmount) || 0), 0) || 0
+    }).reduce((sum, r: any) => sum + (Number(r.totalAmount) || 0), 0) || 0
+    
+    console.log('🏠 [首页统计] 本月收入:', monthlyRevenue)
     
     return {
       todayCheckInCount: todayCheckInCount || 0,
@@ -219,31 +318,57 @@ export default function HomeScreen() {
     threeDaysAgo.setDate(threeDaysAgo.getDate() - 3)
     const threeDaysAgoStr = getLocalDateString(threeDaysAgo)
     
+    // 格式化日期为 YYYY-MM-DD
+    const formatDate = (dateStr: string) => {
+      try {
+        const date = new Date(dateStr)
+        const year = date.getFullYear()
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const day = String(date.getDate()).padStart(2, '0')
+        return `${year}-${month}-${day}`
+      } catch {
+        return dateStr
+      }
+    }
+    
     return reservations
-      .filter(r => {
+      .filter((r: any) => {
         // 显示：未取消的订单 且 (入住日期在最近3天到未来 或 最近创建的)
-        if (r.status === 'cancelled') return false
-        const isRecentCheckIn = r.checkInDate >= threeDaysAgoStr
-        const isRecentCreated = new Date(r.createdAt) >= threeDaysAgo
+        if (r.status === 'cancelled' || r.status === 'CANCELLED') return false
+        const checkInDate = formatDate(r.checkInDate)
+        const isRecentCheckIn = checkInDate >= threeDaysAgoStr
+        const createdAt = r.createdAt ? new Date(r.createdAt) : new Date()
+        const isRecentCreated = createdAt >= threeDaysAgo
         return isRecentCheckIn || isRecentCreated
       })
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .sort((a: any, b: any) => {
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        return bTime - aTime
+      })
       .slice(0, 5)
-      .map(r => ({
+      .map((r: any) => {
+        // 从房间列表查找房间信息
+        const room = rooms.find(room => room.id === r.roomId)
+        const roomName = room?.name || r.roomNumber || r.room?.name || '未知'
+        const roomType = room?.type || r.room?.roomType || r.roomType || '未知房型'
+        
+        return {
         id: r.id,
-        orderId: r.orderId || '',
-        guestName: r.guestName || '未知',
-        guestPhone: r.guestPhone || '',
-        room: `${r.roomType || '未知'}-${r.roomNumber || ''}`,
-        checkIn: r.checkInDate,
-        checkOutDate: r.checkOutDate,
-        channel: r.channel || '直订',
-        roomPrice: (r.roomPrice || r.roomRate || 0).toString(),
-        nights: (r.nights || 1).toString(),
-        totalAmount: (r.totalAmount || 0).toString(),
-        status: r.status === 'confirmed' ? 'confirmed' as const : 'pending' as const,
-      }))
-  }, [reservations])
+          orderId: r.orderId || '',
+          guestName: r.guestName || '未知',
+          guestPhone: r.guestPhone || '',
+          room: `${roomName} - ${roomType}`,
+          checkIn: formatDate(r.checkInDate),
+          checkOutDate: formatDate(r.checkOutDate),
+          channel: r.source || r.channel || '直订',
+          roomPrice: (r.roomPrice || r.roomRate || 0).toString(),
+          nights: (r.nights || 1).toString(),
+          totalAmount: (r.totalAmount || 0).toString(),
+          status: (r.status === 'CONFIRMED' || r.status === 'confirmed') ? 'confirmed' as const : 'pending' as const,
+        }
+      })
+  }, [reservations, rooms])
   
   // 新建预订弹窗状态
   const [bookingModalVisible, setBookingModalVisible] = useState(false)
