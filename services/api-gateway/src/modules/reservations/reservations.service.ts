@@ -101,21 +101,20 @@ export class ReservationsService {
       where.status = filters.status
     }
 
-    if (filters?.startDate || filters?.endDate) {
-      where.OR = [
-        {
-          checkInDate: {
-            gte: filters.startDate ? new Date(filters.startDate) : undefined,
-            lte: filters.endDate ? new Date(filters.endDate) : undefined,
-          },
-        },
-        {
-          checkOutDate: {
-            gte: filters.startDate ? new Date(filters.startDate) : undefined,
-            lte: filters.endDate ? new Date(filters.endDate) : undefined,
-          },
-        },
-      ]
+    // 查询与日期范围有重叠的预订
+    if (filters?.startDate && filters?.endDate) {
+      const startDate = new Date(filters.startDate)
+      const endDate = new Date(filters.endDate)
+      
+      // 查询条件：预订的入住日期 < 查询结束日期 AND 预订的退房日期 > 查询开始日期
+      where.checkInDate = { lt: endDate }
+      where.checkOutDate = { gt: startDate }
+    } else if (filters?.startDate) {
+      // 只有开始日期：查询退房日期 > 开始日期
+      where.checkOutDate = { gt: new Date(filters.startDate) }
+    } else if (filters?.endDate) {
+      // 只有结束日期：查询入住日期 < 结束日期
+      where.checkInDate = { lt: new Date(filters.endDate) }
     }
 
     return this.prisma.reservation.findMany({

@@ -197,17 +197,18 @@ export default function HomeScreen() {
     const currentMonth = new Date().getMonth() + 1
     const currentYear = new Date().getFullYear()
     const monthlyRevenue = reservations.filter(r => {
+      if (!r.checkInDate) return false
       const checkInDate = new Date(r.checkInDate)
       return checkInDate.getMonth() + 1 === currentMonth && checkInDate.getFullYear() === currentYear
-    }).reduce((sum, r) => sum + (r.totalAmount || 0), 0)
+    }).reduce((sum, r) => sum + (Number(r.totalAmount) || 0), 0) || 0
     
     return {
-      todayCheckInCount,
-      todayCheckInRevenue,
-      todayCheckOutCount,
-      currentOccupied,
-      occupancyRate,
-      monthlyRevenue,
+      todayCheckInCount: todayCheckInCount || 0,
+      todayCheckInRevenue: todayCheckInRevenue || 0,
+      todayCheckOutCount: todayCheckOutCount || 0,
+      currentOccupied: currentOccupied || 0,
+      occupancyRate: occupancyRate || 0,
+      monthlyRevenue: monthlyRevenue || 0,
     }
   }, [reservations, rooms])
   
@@ -230,16 +231,16 @@ export default function HomeScreen() {
       .slice(0, 5)
       .map(r => ({
         id: r.id,
-        orderId: r.orderId,
-        guestName: r.guestName,
-        guestPhone: r.guestPhone,
-        room: `${r.roomType}-${r.roomNumber}`,
+        orderId: r.orderId || '',
+        guestName: r.guestName || '未知',
+        guestPhone: r.guestPhone || '',
+        room: `${r.roomType || '未知'}-${r.roomNumber || ''}`,
         checkIn: r.checkInDate,
         checkOutDate: r.checkOutDate,
-        channel: r.channel,
-        roomPrice: r.roomPrice.toString(),
-        nights: r.nights.toString(),
-        totalAmount: r.totalAmount.toString(),
+        channel: r.channel || '直订',
+        roomPrice: (r.roomPrice || r.roomRate || 0).toString(),
+        nights: (r.nights || 1).toString(),
+        totalAmount: (r.totalAmount || 0).toString(),
         status: r.status === 'confirmed' ? 'confirmed' as const : 'pending' as const,
       }))
   }, [reservations])
@@ -304,8 +305,8 @@ export default function HomeScreen() {
     },
     {
       title: '本月收入',
-      value: `¥${todayData.monthlyRevenue.toFixed(0)}`,
-      description: `共${todayData.currentOccupied}间在住`,
+      value: `¥${(todayData.monthlyRevenue || 0).toFixed(0)}`,
+      description: `共${todayData.currentOccupied || 0}间在住`,
       color: '#8b5cf6'
     }
   ]

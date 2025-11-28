@@ -290,8 +290,36 @@ export default function CreateOrderScreen() {
           usingAPI: FEATURE_FLAGS.USE_BACKEND_API
         })
         
+        // 获取propertyId
+        const { authService } = await import('./services/authService')
+        const propertyId = await authService.getPropertyId()
+        
+        // 构造符合后端API的预订对象
+        const apiReservationData = {
+          checkInDate: room.checkInDate,
+          checkOutDate: room.checkOutDate,
+          guestCount: 1, // 默认1人，后续可以从表单获取
+          childCount: 0, // 默认0个儿童
+          roomRate: room.price, // 注意：后端用 roomRate 而不是 roomPrice
+          totalAmount: room.price * nights,
+          guestName: formData.guestName,
+          guestPhone: formData.guestPhone,
+          guestIdNumber: formData.guestIdNumber || '',
+          notes: `渠道: ${formData.channel}`,
+          propertyId: propertyId || 'demo-property',
+          roomId: room.roomId,
+          source: formData.channel,
+        }
+        
+        console.log('📝 [CreateOrder] 提交的预订数据:', apiReservationData)
+        
+        // 使用dataService创建预订
+        console.log('💾 [CreateOrder] 通过dataService创建预订...')
+        const createdReservation = await dataService.reservations.create(apiReservationData)
+        
+        // 构造本地Redux使用的完整 Reservation 对象
         const reservation: Reservation = {
-          id: reservationId,
+          id: createdReservation.id || reservationId,
           orderId,
           roomId: room.roomId,
           roomNumber: room.roomId,
@@ -304,22 +332,16 @@ export default function CreateOrderScreen() {
           checkInDate: room.checkInDate,
           checkOutDate: room.checkOutDate,
           roomPrice: room.price,
-          totalAmount: room.price,
+          totalAmount: room.price * nights,
           nights,
           status: 'confirmed',
-          createdAt: new Date().toISOString(),
-          propertyId: 'demo-property', // 添加propertyId用于API调用
+          createdAt: createdReservation.createdAt || new Date().toISOString(),
+          propertyId: propertyId || 'demo-property',
         }
+        console.log('✅ [CreateOrder] 预订创建成功:', reservation.id)
         
-        console.log('📝 [CreateOrder] 提交的预订对象:', reservation)
-        
-        // 使用dataService创建预订（会根据配置选择API或本地存储）
-        console.log('💾 [CreateOrder] 通过dataService创建预订...')
-        const createdReservation = await dataService.reservations.create(reservation)
-        console.log('✅ [CreateOrder] 预订创建成功:', createdReservation.id)
-        
-        // 更新Redux状态
-        dispatch(addReservation(createdReservation))
+        // 更新Redux状态（使用本地格式的完整对象）
+        dispatch(addReservation(reservation))
       }
     } catch (error: any) {
       console.error('❌ [CreateOrder] 创建预订失败:', error)

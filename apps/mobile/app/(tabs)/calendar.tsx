@@ -194,12 +194,13 @@ export default function CalendarScreen() {
         
         if (roomStatus) {
           // 如果有房态记录，使用该状态
-          if (roomStatus.status === 'occupied' && roomStatus.reservationId) {
+          // reserved 或 occupied 都表示有预订
+          if ((roomStatus.status === 'occupied' || roomStatus.status === 'reserved') && roomStatus.reservationId) {
             // 查找预订信息
             const reservation = reduxReservations.find(r => r.id === roomStatus.reservationId)
             if (reservation) {
               rooms[room.id] = {
-                status: 'occupied',
+                status: 'occupied', // 统一显示为occupied
                 guestName: reservation.guestName,
                 guestPhone: reservation.guestPhone,
                 channel: reservation.channel,
@@ -402,13 +403,12 @@ export default function CalendarScreen() {
       
       // 并行加载房间、预订和房态数据
       const [rooms, reservations, roomStatuses] = await Promise.all([
-        dataService.rooms.getAll('demo-property'),
+        dataService.rooms.getAll(),
         dataService.reservations.getAll({
           startDate: startDateStr,
           endDate: endDateStr,
-          propertyId: 'demo-property'
         }),
-        dataService.roomStatus.getByDateRange(startDateStr, endDateStr, 'demo-property')
+        dataService.roomStatus.getByDateRange(startDateStr, endDateStr)
       ])
       
       console.log('📅 [Calendar] ========== API返回数据详情 ==========')
@@ -532,23 +532,28 @@ export default function CalendarScreen() {
       console.log('📝 [Calendar] 查找到的预订:', reservation)
       
       if (reservation) {
+        // 计算nights
+        const checkIn = new Date(reservation.checkInDate)
+        const checkOut = new Date(reservation.checkOutDate)
+        const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24))
+        
         router.push({
           pathname: '/order-details',
           params: {
             reservationId: reservation.id, // 传递预订ID
-            orderId: reservation.orderId,
-            guestName: reservation.guestName,
-            guestPhone: reservation.guestPhone,
-            channel: reservation.channel,
+            orderId: reservation.orderId || '',
+            guestName: reservation.guestName || '未知',
+            guestPhone: reservation.guestPhone || '',
+            channel: reservation.source || reservation.channel || '直订',
             checkInDate: reservation.checkInDate,
             checkOutDate: reservation.checkOutDate,
-            roomType: reservation.roomType,
-            roomPrice: reservation.roomPrice.toString(),
-            guestCount: '1',
-            nights: reservation.nights.toString(),
-            totalAmount: reservation.totalAmount.toString(),
-            paidAmount: (reservation.paidAmount || 0).toString(),
-            remainingAmount: (reservation.totalAmount - (reservation.paidAmount || 0)).toString(),
+            roomType: reservation.room?.roomType || reservation.roomType || '未知房型',
+            roomPrice: (reservation.roomPrice || reservation.roomRate || 0).toString(),
+            guestCount: (reservation.guestCount || 1).toString(),
+            nights: (reservation.nights || nights).toString(),
+            totalAmount: (Number(reservation.totalAmount) || 0).toString(),
+            paidAmount: (Number(reservation.paidAmount) || 0).toString(),
+            remainingAmount: ((Number(reservation.totalAmount) || 0) - (Number(reservation.paidAmount) || 0)).toString(),
           }
         })
         return

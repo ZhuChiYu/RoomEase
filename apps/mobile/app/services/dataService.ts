@@ -131,8 +131,20 @@ export const dataService = {
         return cached
       }
 
-      // 从API获取并缓存
-      const rooms = await api.rooms.getAll(effectivePropertyId)
+      // 从API获取
+      const apiRooms = await api.rooms.getAll(effectivePropertyId)
+      
+      // 转换API数据格式为前端期望的格式
+      const rooms: Room[] = apiRooms.map((apiRoom: any) => ({
+        id: apiRoom.id,
+        name: apiRoom.name || apiRoom.code,
+        type: apiRoom.roomType,
+        status: 'available', // 默认可用
+      }))
+      
+      console.log(`✅ 转换了 ${rooms.length} 个房间数据`)
+      
+      // 缓存转换后的数据
       await cache.set(cacheKey, rooms)
       return rooms
     },
@@ -165,13 +177,20 @@ export const dataService = {
 
   // ============= 预订相关 =============
   reservations: {
-    getAll: async (params?: { startDate?: string; endDate?: string; status?: string }): Promise<Reservation[]> => {
+    getAll: async (params?: { startDate?: string; endDate?: string; status?: string; propertyId?: string }): Promise<Reservation[]> => {
       console.log('🌐 从云服务API获取预订列表')
       
+      // 如果没有传入propertyId，使用保存的propertyId
+      const effectivePropertyId = params?.propertyId || await getPropertyId()
+      const effectiveParams = {
+        ...params,
+        propertyId: effectivePropertyId
+      }
+      
+      console.log('📋 [Reservations] 查询参数:', effectiveParams)
+      
       // 为不同参数创建不同的缓存键
-      const cacheKey = params 
-        ? `${CACHE_KEYS.RESERVATIONS}_${JSON.stringify(params)}`
-        : CACHE_KEYS.RESERVATIONS
+      const cacheKey = `${CACHE_KEYS.RESERVATIONS}_${JSON.stringify(effectiveParams)}`
 
       // 尝试从缓存获取
       const cached = await cache.get<Reservation[]>(cacheKey, CACHE_CONFIG.RESERVATIONS_TTL)
@@ -181,7 +200,8 @@ export const dataService = {
       }
 
       // 从API获取并缓存
-      const reservations = await api.reservations.getAll(params)
+      const reservations = await api.reservations.getAll(effectiveParams)
+      console.log(`✅ 从API获取到 ${reservations.length} 个预订`)
       await cache.set(cacheKey, reservations)
       return reservations
     },
@@ -241,11 +261,16 @@ export const dataService = {
 
   // ============= 房态相关 =============
   roomStatus: {
-    getByDateRange: async (startDate: string, endDate: string, propertyId: string = 'demo-property'): Promise<RoomStatusData[]> => {
+    getByDateRange: async (startDate: string, endDate: string, propertyId?: string): Promise<RoomStatusData[]> => {
       console.log('🌐 从云服务API获取房态')
       
+      // 如果没有传入propertyId，使用保存的propertyId
+      const effectivePropertyId = propertyId || await getPropertyId()
+      
+      console.log('📅 [RoomStatus] 查询参数:', { startDate, endDate, propertyId: effectivePropertyId })
+      
       // 为不同日期范围创建不同的缓存键
-      const cacheKey = `${CACHE_KEYS.ROOM_STATUS}_${propertyId}_${startDate}_${endDate}`
+      const cacheKey = `${CACHE_KEYS.ROOM_STATUS}_${effectivePropertyId}_${startDate}_${endDate}`
 
       // 尝试从缓存获取
       const cached = await cache.get<RoomStatusData[]>(cacheKey, CACHE_CONFIG.ROOM_STATUS_TTL)
@@ -255,7 +280,8 @@ export const dataService = {
       }
 
       // 从API获取并缓存
-      const roomStatus = await api.roomStatus.getByDateRange(startDate, endDate, propertyId)
+      const roomStatus = await api.roomStatus.getByDateRange(startDate, endDate, effectivePropertyId)
+      console.log(`✅ 从API获取到 ${roomStatus.length} 条房态数据`)
       await cache.set(cacheKey, roomStatus)
       return roomStatus
     },
