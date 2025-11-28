@@ -21,7 +21,23 @@
       "infoPlist": {
         "NSCameraUsageDescription": "RoomEase需要访问相机以扫描证件",
         "NSPhotoLibraryUsageDescription": "RoomEase需要访问相册以保存和选择图片",
-        "NSPhotoLibraryAddUsageDescription": "RoomEase需要保存图片到相册"
+        "NSPhotoLibraryAddUsageDescription": "RoomEase需要保存图片到相册",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSExceptionDomains": {
+            "111.230.110.95": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": true
+            },
+            "192.168.31.221": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": true
+            },
+            "localhost": {
+              "NSExceptionAllowsInsecureHTTPLoads": true
+            }
+          }
+        }
       },
       "config": {
         "usesNonExemptEncryption": false
@@ -39,8 +55,10 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
         "READ_MEDIA_IMAGES",
-        "READ_MEDIA_VIDEO"
-      ]
+        "READ_MEDIA_VIDEO",
+        "INTERNET"
+      ],
+      "usesCleartextTraffic": true
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -73,7 +91,7 @@
       "eas": {
         "projectId": "your-project-id-here"
       },
-      "apiUrl": "http://192.168.31.221:4000"
+      "apiUrl": "http://111.230.110.95:8080"
     },
     "updates": {
       "fallbackToCacheTimeout": 0

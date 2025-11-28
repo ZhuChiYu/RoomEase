@@ -22,6 +22,7 @@ import {
   clearAllData,
 } from '../services/dataBackupService'
 import { persistedStorage, authStorage } from '../services/storage'
+import { useAuth } from '../contexts/AuthContext'
 
 interface UserInfo {
   name: string
@@ -73,12 +74,13 @@ function SettingItem({ label, value, type, onPress, onValueChange }: SettingsPro
 export default function ProfileScreen() {
   const dispatch = useAppDispatch()
   const calendarState = useAppSelector(state => state.calendar)
+  const { logout, user, refreshUser } = useAuth()
   
   const [userInfo, setUserInfo] = useState<UserInfo>({
-    name: '张经理',
-    email: 'manager@roomease.com',
+    name: user?.name || '张经理',
+    email: user?.email || 'manager@roomease.com',
     phone: '13800138888',
-    role: '酒店经理',
+    role: user?.role || '酒店经理',
     property: '阳光民宿',
     hotelName: '',
     position: '',
@@ -100,6 +102,18 @@ export default function ProfileScreen() {
 
   const [isLoading, setIsLoading] = useState(false)
 
+  // 监听用户变化，更新用户信息
+  useEffect(() => {
+    if (user) {
+      setUserInfo(prev => ({
+        ...prev,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      }))
+    }
+  }, [user])
+
   // 加载数据统计
   useEffect(() => {
     loadDataStatistics()
@@ -111,12 +125,20 @@ export default function ProfileScreen() {
   }, [])
 
   const loadUserInfo = async () => {
-    const savedUserInfo = await authStorage.getUserInfo()
-    if (savedUserInfo) {
-      setUserInfo(prev => ({
-        ...prev,
-        ...savedUserInfo
-      }))
+    try {
+      // 从 AuthContext 获取最新用户信息
+      await refreshUser()
+      
+      // 尝试从本地存储加载其他信息
+      const savedUserInfo = await authStorage.getUserInfo()
+      if (savedUserInfo) {
+        setUserInfo(prev => ({
+          ...prev,
+          ...savedUserInfo
+        }))
+      }
+    } catch (error) {
+      console.error('加载用户信息失败:', error)
     }
   }
 
@@ -209,8 +231,13 @@ export default function ProfileScreen() {
         {
           text: '确定',
           style: 'destructive',
-          onPress: () => {
-            Alert.alert('已退出', '您已成功退出登录')
+          onPress: async () => {
+            try {
+              await logout()
+              // logout 函数会自动跳转到登录页
+            } catch (error: any) {
+              Alert.alert('错误', error.message || '退出登录失败')
+            }
           }
         }
       ]

@@ -10,16 +10,24 @@ import { Platform } from 'react-native'
 // 判断是否为开发环境
 export const isDev = __DEV__
 
+// API服务器选项
+export const API_SERVERS = {
+  LOCAL_DEV: 'http://192.168.31.221:4000',      // 本地开发服务器
+  REMOTE_NGINX: 'https://www.englishpartner.cn', // 远程服务器（HTTPS）✅ 推荐
+  REMOTE_DIRECT: 'http://111.230.110.95:4000',  // 远程服务器（直接连接API Gateway）
+  DOMAIN: 'https://www.englishpartner.cn',      // 域名（SSL）
+}
+
 // API配置
 export const API_CONFIG = {
-  // API基础URL
+  // API基础URL - 默认配置
+  // 可以在开发者设置中动态切换
   BASE_URL: isDev 
-    ? 'http://192.168.31.221:4000' // 开发环境 - 使用局域网IP（移动设备无法访问localhost）
-    : 'http://111.230.110.95', // 生产环境 - 腾讯云服务器
-    // : 'https://www.englishpartner.cn', // 生产环境 - 使用域名（配置SSL后）
+    ? API_SERVERS.DOMAIN                     // 开发环境使用 HTTPS（真机测试）
+    : API_SERVERS.DOMAIN,                    // 生产环境使用 HTTPS
   
   // 备用API地址（如果主地址连接失败）
-  FALLBACK_URL: 'http://localhost:4000',
+  FALLBACK_URL: API_SERVERS.REMOTE_NGINX,
   
   // 请求超时时间（毫秒）
   TIMEOUT: 30000,

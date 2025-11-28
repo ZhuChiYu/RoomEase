@@ -20,8 +20,14 @@ export class RegisterDto {
   @IsString()
   phone?: string
 
-  @ApiProperty({ example: 'my-hotel', description: '租户标识符' })
+  @ApiProperty({ example: '阳光民宿', description: '酒店名称', required: false })
+  @IsOptional()
   @IsString()
-  tenantSlug: string
+  hotelName?: string
+
+  @ApiProperty({ example: 'my-hotel', description: '租户标识符（自动生成）', required: false })
+  @IsOptional()
+  @IsString()
+  tenantSlug?: string
 }
 

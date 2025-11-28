@@ -14,6 +14,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  TextInput,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { getDeveloperModeConfig, setDeveloperMode } from '../services/dataService'
@@ -25,6 +26,13 @@ import {
   getDataStats,
 } from '../services/dataBackupService'
 import { initializeLocalData } from '../services/localDataService'
+import { api, updateApiBaseUrl, getCurrentApiUrl } from '../services/api'
+import { API_CONFIG, API_SERVERS } from '../config/environment'
+import {
+  getApiServerUrl,
+  setApiServerUrl,
+  getAvailableServers,
+} from '../services/apiConfigService'
 import type { BackupData } from '../services/dataBackupService'
 
 export default function DeveloperScreen() {
@@ -32,18 +40,45 @@ export default function DeveloperScreen() {
   const [isLoading, setIsLoading] = useState(false)
   const [dataStats, setDataStats] = useState<any>(null)
   const [lastUpdate, setLastUpdate] = useState<string>('')
+  const [currentServerUrl, setCurrentServerUrl] = useState<string>(API_CONFIG.BASE_URL)
+  const [serverStatus, setServerStatus] = useState<{
+    connected: boolean
+    testing: boolean
+    lastTest?: string
+    error?: string
+    duration?: number
+  }>({
+    connected: false,
+    testing: false,
+  })
 
   // 加载配置
   useEffect(() => {
     loadConfig()
     loadDataStats()
+    // 如果是服务器模式，自动测试连接
+    if (!useLocalStorage) {
+      testServerConnection()
+    }
   }, [])
+
+  // 监听数据源切换，自动测试服务器连接
+  useEffect(() => {
+    if (!useLocalStorage) {
+      testServerConnection()
+    }
+  }, [useLocalStorage])
 
   const loadConfig = async () => {
     try {
       const config = await getDeveloperModeConfig()
       setUseLocalStorage(config.useLocalStorage)
       setLastUpdate(config.lastUpdated)
+      
+      // 加载当前服务器地址
+      const serverUrl = await getApiServerUrl()
+      setCurrentServerUrl(serverUrl)
+      console.log('当前API服务器:', serverUrl)
     } catch (error) {
       console.error('加载配置失败:', error)
     }
@@ -56,6 +91,196 @@ export default function DeveloperScreen() {
     } catch (error) {
       console.error('加载数据统计失败:', error)
     }
+  }
+
+  // 输入自定义服务器地址
+  const handleCustomServer = () => {
+    Alert.prompt(
+      '自定义服务器地址',
+      '输入完整的服务器地址（包含 http:// 或 https://）\n\n例如：\n• https://your-url.ngrok-free.app\n• http://192.168.1.100:4000',
+      [
+        {
+          text: '取消',
+          style: 'cancel',
+        },
+        {
+          text: '确定',
+          onPress: async (url?: string) => {
+            if (!url || url.trim() === '') {
+              Alert.alert('错误', '请输入有效的服务器地址')
+              return
+            }
+
+            const trimmedUrl = url.trim()
+
+            // 验证 URL 格式
+            if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+              Alert.alert('错误', '服务器地址必须以 http:// 或 https:// 开头')
+              return
+            }
+
+            try {
+              setIsLoading(true)
+
+              // 保存新的服务器地址
+              await setApiServerUrl(trimmedUrl)
+
+              // 更新API客户端
+              await updateApiBaseUrl(trimmedUrl)
+
+              // 更新本地状态
+              setCurrentServerUrl(trimmedUrl)
+
+              console.log('✅ 自定义服务器地址已设置:', trimmedUrl)
+
+              // 自动测试新服务器连接
+              await testServerConnection()
+
+              Alert.alert(
+                '服务器已更新',
+                `新地址: ${trimmedUrl}\n\n${trimmedUrl.startsWith('https://') ? '✅ 使用 HTTPS 加密连接' : '⚠️ 使用 HTTP 明文连接'}`,
+                [{ text: '确定' }]
+              )
+            } catch (error: any) {
+              console.error('设置自定义服务器失败:', error)
+              Alert.alert('设置失败', error.message)
+            } finally {
+              setIsLoading(false)
+            }
+          },
+        },
+      ],
+      'plain-text',
+      currentServerUrl
+    )
+  }
+
+  // 切换服务器地址
+  const handleChangeServer = () => {
+    const servers = getAvailableServers()
+    
+    Alert.alert(
+      '选择API服务器',
+      '请选择要连接的服务器',
+      [
+        ...servers.map(server => ({
+          text: `${server.name}${server.recommended ? ' ⭐' : ''}`,
+          onPress: async () => {
+            try {
+              setIsLoading(true)
+              
+              // 保存新的服务器地址
+              await setApiServerUrl(server.url)
+              
+              // 更新API客户端
+              await updateApiBaseUrl(server.url)
+              
+              // 更新本地状态
+              setCurrentServerUrl(server.url)
+              
+              console.log('✅ 服务器地址已切换:', server.url)
+              
+              // 自动测试新服务器连接
+              await testServerConnection()
+              
+              Alert.alert(
+                '服务器已切换',
+                `${server.name}\n${server.url}\n\n${server.description}`,
+                [{ text: '确定' }]
+              )
+            } catch (error: any) {
+              console.error('切换服务器失败:', error)
+              Alert.alert('切换失败', error.message)
+            } finally {
+              setIsLoading(false)
+            }
+          },
+        })),
+        {
+          text: '✏️ 自定义地址',
+          onPress: handleCustomServer,
+        },
+        {
+          text: '取消',
+          style: 'cancel',
+        },
+      ]
+    )
+  }
+
+  // 测试服务器连接
+  const testServerConnection = async () => {
+    console.log('🔌 开始测试服务器连接...')
+    const currentUrl = getCurrentApiUrl()
+    console.log('服务器地址:', currentUrl)
+    
+    setServerStatus({
+      connected: false,
+      testing: true,
+    })
+
+    try {
+      const result = await api.health.test()
+      console.log('✅ 服务器连接测试完成:', result)
+      
+      if (result.health.success) {
+        setServerStatus({
+          connected: true,
+          testing: false,
+          lastTest: new Date().toISOString(),
+          duration: result.health.duration,
+        })
+        console.log('✅ 服务器连接成功')
+      } else {
+        setServerStatus({
+          connected: false,
+          testing: false,
+          lastTest: new Date().toISOString(),
+          error: result.health.error || '未知错误',
+        })
+        console.error('❌ 服务器连接失败:', result.health.error)
+      }
+    } catch (error: any) {
+      console.error('❌ 服务器连接测试异常:', error)
+      setServerStatus({
+        connected: false,
+        testing: false,
+        lastTest: new Date().toISOString(),
+        error: error.message || '连接异常',
+      })
+    }
+  }
+
+  // 手动测试连接按钮
+  const handleTestConnection = async () => {
+    Alert.alert(
+      '测试服务器连接',
+      `将测试连接到: ${API_CONFIG.BASE_URL}`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '开始测试',
+          onPress: async () => {
+            await testServerConnection()
+            
+            // 显示测试结果
+            if (serverStatus.connected) {
+              Alert.alert(
+                '✅ 连接成功',
+                `服务器响应正常\n响应时间: ${serverStatus.duration}ms\n服务器: ${API_CONFIG.BASE_URL}`,
+                [{ text: '确定' }]
+              )
+            } else {
+              Alert.alert(
+                '❌ 连接失败',
+                `无法连接到服务器\n错误: ${serverStatus.error}\n服务器: ${API_CONFIG.BASE_URL}\n\n请检查：\n1. 服务器是否正在运行\n2. 网络连接是否正常\n3. API地址是否正确`,
+                [{ text: '确定' }]
+              )
+            }
+          },
+        },
+      ]
+    )
   }
 
   // 切换数据源
@@ -260,6 +485,144 @@ export default function DeveloperScreen() {
             </View>
           </View>
         </View>
+
+        {/* 服务器连接状态 */}
+        {!useLocalStorage && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>服务器配置</Text>
+            </View>
+
+            <View style={styles.card}>
+              {/* 服务器地址选择 */}
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={handleChangeServer}
+                disabled={isLoading}
+              >
+                <Text style={styles.actionIcon}>🌐</Text>
+                <View style={styles.actionInfo}>
+                  <Text style={styles.actionLabel}>切换服务器</Text>
+                  <Text style={styles.actionDescription} numberOfLines={1}>
+                    当前: {currentServerUrl}
+                  </Text>
+                </View>
+                <Text style={styles.chevron}>›</Text>
+              </TouchableOpacity>
+
+              <View style={styles.divider} />
+
+              {/* 自定义服务器地址 */}
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={handleCustomServer}
+                disabled={isLoading}
+              >
+                <Text style={styles.actionIcon}>✏️</Text>
+                <View style={styles.actionInfo}>
+                  <Text style={styles.actionLabel}>自定义服务器地址</Text>
+                  <Text style={styles.actionDescription}>
+                    输入 ngrok HTTPS URL 或其他地址
+                  </Text>
+                </View>
+                <Text style={styles.chevron}>›</Text>
+              </TouchableOpacity>
+
+              <View style={styles.divider} />
+
+              {/* 连接状态指示 */}
+              <View style={styles.connectionStatus}>
+                <View style={styles.statusRow}>
+                  <Text style={styles.statusLabel}>服务器地址:</Text>
+                  <Text style={styles.statusValue} numberOfLines={1}>{currentServerUrl}</Text>
+                </View>
+                
+                <View style={styles.statusRow}>
+                  <Text style={styles.statusLabel}>连接状态:</Text>
+                  <View style={styles.statusBadge}>
+                    {serverStatus.testing ? (
+                      <>
+                        <ActivityIndicator size="small" color="#f59e0b" />
+                        <Text style={[styles.statusText, styles.testingText]}>测试中...</Text>
+                      </>
+                    ) : serverStatus.connected ? (
+                      <>
+                        <View style={[styles.statusDot, styles.connectedDot]} />
+                        <Text style={[styles.statusText, styles.connectedText]}>已连接</Text>
+                      </>
+                    ) : (
+                      <>
+                        <View style={[styles.statusDot, styles.disconnectedDot]} />
+                        <Text style={[styles.statusText, styles.disconnectedText]}>未连接</Text>
+                      </>
+                    )}
+                  </View>
+                </View>
+
+                {serverStatus.duration && (
+                  <View style={styles.statusRow}>
+                    <Text style={styles.statusLabel}>响应时间:</Text>
+                    <Text style={styles.statusValue}>{serverStatus.duration}ms</Text>
+                  </View>
+                )}
+
+                {serverStatus.lastTest && (
+                  <View style={styles.statusRow}>
+                    <Text style={styles.statusLabel}>最后测试:</Text>
+                    <Text style={styles.statusValue}>
+                      {new Date(serverStatus.lastTest).toLocaleTimeString('zh-CN')}
+                    </Text>
+                  </View>
+                )}
+
+                {serverStatus.error && (
+                  <View style={styles.errorBox}>
+                    <Text style={styles.errorText}>错误: {serverStatus.error}</Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.divider} />
+
+              {/* 测试按钮 */}
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={handleTestConnection}
+                disabled={serverStatus.testing}
+              >
+                <Text style={styles.actionIcon}>🔌</Text>
+                <View style={styles.actionInfo}>
+                  <Text style={styles.actionLabel}>测试服务器连接</Text>
+                  <Text style={styles.actionDescription}>
+                    验证app是否能连接到API服务器
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            {/* 连接提示 */}
+            {!serverStatus.connected && !serverStatus.testing && (
+              <View style={[styles.infoBox, styles.warningBox]}>
+                <Text style={styles.infoIcon}>⚠️</Text>
+                <Text style={[styles.infoText, styles.warningText]}>
+                  无法连接到服务器。请检查：{'\n'}
+                  1. 服务器是否正在运行{'\n'}
+                  2. 网络连接是否正常{'\n'}
+                  3. 尝试切换到其他服务器地址
+                </Text>
+              </View>
+            )}
+
+            {serverStatus.connected && (
+              <View style={[styles.infoBox, styles.successBox]}>
+                <Text style={styles.infoIcon}>✅</Text>
+                <Text style={[styles.infoText, styles.successText]}>
+                  服务器连接正常！所有API请求将发送到: {currentServerUrl}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* 数据统计 */}
         {useLocalStorage && dataStats && (
@@ -581,6 +944,82 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6b7280',
     marginBottom: 4,
+  },
+  connectionStatus: {
+    marginBottom: 12,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  statusLabel: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  statusValue: {
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '500',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  connectedDot: {
+    backgroundColor: '#10b981',
+  },
+  disconnectedDot: {
+    backgroundColor: '#ef4444',
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  connectedText: {
+    color: '#10b981',
+  },
+  disconnectedText: {
+    color: '#ef4444',
+  },
+  testingText: {
+    color: '#f59e0b',
+    marginLeft: 4,
+  },
+  errorBox: {
+    backgroundColor: '#fee2e2',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  errorText: {
+    fontSize: 13,
+    color: '#dc2626',
+    lineHeight: 18,
+  },
+  warningBox: {
+    backgroundColor: '#fef3c7',
+  },
+  warningText: {
+    color: '#92400e',
+  },
+  successBox: {
+    backgroundColor: '#d1fae5',
+  },
+  successText: {
+    color: '#065f46',
+  },
+  chevron: {
+    fontSize: 24,
+    color: '#9ca3af',
+    marginLeft: 8,
   },
 })
 

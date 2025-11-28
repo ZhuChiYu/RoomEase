@@ -45,6 +45,7 @@ export class AuthService {
 
     return {
       ...tokens,
+      token: tokens.accessToken, // 兼容前端
       user: {
         id: user.id,
         email: user.email,
@@ -58,7 +59,7 @@ export class AuthService {
    * 用户注册
    */
   async register(registerDto: RegisterDto): Promise<LoginResponseDto> {
-    const { email, password, name, phone, tenantSlug } = registerDto
+    const { email, password, name, phone, hotelName, tenantSlug } = registerDto
 
     // 检查邮箱是否已存在
     const existingUser = await this.prisma.user.findUnique({
@@ -69,17 +70,20 @@ export class AuthService {
       throw new ConflictException('该邮箱已被注册')
     }
 
+    // 生成租户标识符（如果未提供）
+    const slug = tenantSlug || this.generateSlug(hotelName || email)
+
     // 查找或创建租户
     let tenant = await this.prisma.tenant.findUnique({
-      where: { slug: tenantSlug },
+      where: { slug },
     })
 
     if (!tenant) {
       // 创建新租户
       tenant = await this.prisma.tenant.create({
         data: {
-          name: tenantSlug,
-          slug: tenantSlug,
+          name: hotelName || name + '的酒店',
+          slug,
           subscription: {
             create: {
               plan: 'FREE',
@@ -118,6 +122,7 @@ export class AuthService {
 
     return {
       ...tokens,
+      token: tokens.accessToken, // 兼容前端
       user: {
         id: user.id,
         email: user.email,
@@ -176,5 +181,22 @@ export class AuthService {
     }
 
     return user
+  }
+
+  /**
+   * 生成租户标识符
+   */
+  private generateSlug(input: string): string {
+    // 移除特殊字符，转换为小写，用连字符连接
+    const slug = input
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, '') // 移除特殊字符
+      .replace(/\s+/g, '-')      // 空格转连字符
+      .replace(/-+/g, '-')       // 多个连字符转单个
+      .trim()
+    
+    // 添加随机后缀以确保唯一性
+    const randomSuffix = Math.random().toString(36).substring(2, 8)
+    return `${slug}-${randomSuffix}`
   }
 }

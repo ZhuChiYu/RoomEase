@@ -14,6 +14,7 @@ import { initializeLocalData } from './services/localDataService'
 import { persistedStorage } from './services/storage'
 import { apiClient } from './services/apiClient'
 import { FEATURE_FLAGS } from './config/environment'
+import { AuthProvider } from './contexts/AuthContext'
 
 // 禁用字体缩放，忽略系统字体大小设置
 // @ts-ignore - Text.defaultProps is not officially typed but works in React Native
@@ -75,20 +76,8 @@ export default function RootLayout() {
           console.log('ℹ️ 没有找到持久化状态，使用初始状态')
         }
         
-        // 3. 如果使用后端API，自动登录
-        if (FEATURE_FLAGS.USE_BACKEND_API) {
-          console.log('🔐 使用后端API，自动登录中...')
-          try {
-            const loginResponse = await apiClient.login('admin@demo.com', '123456')
-            if (loginResponse.success) {
-              console.log('✅ 自动登录成功:', loginResponse.data)
-            } else {
-              console.warn('⚠️ 自动登录失败:', loginResponse.error)
-            }
-          } catch (loginError) {
-            console.error('❌ 自动登录错误:', loginError)
-          }
-        }
+        // 3. 认证检查会在 AuthProvider 中自动处理
+        console.log('✅ 认证系统已启用')
         
         // 4. 初始化推送通知
         console.log('🔔 初始化推送通知...')
@@ -135,29 +124,37 @@ export default function RootLayout() {
   return (
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <Stack
-          screenOptions={{
-            headerStyle: {
-              backgroundColor: '#6366f1',
-            },
-            headerTintColor: '#fff',
-            headerTitleStyle: {
-              fontWeight: 'bold',
-            },
-          }}
-        >
-          <Stack.Screen 
-            name="(tabs)" 
-            options={{ headerShown: false }} 
-          />
-          <Stack.Screen 
-            name="auth/login" 
-            options={{ 
-              title: '登录',
-              presentation: 'modal' 
-            }} 
-          />
+        <AuthProvider>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <Stack
+            screenOptions={{
+              headerStyle: {
+                backgroundColor: '#6366f1',
+              },
+              headerTintColor: '#fff',
+              headerTitleStyle: {
+                fontWeight: 'bold',
+              },
+            }}
+          >
+            <Stack.Screen 
+              name="(tabs)" 
+              options={{ headerShown: false }} 
+            />
+            <Stack.Screen 
+              name="auth/login" 
+              options={{ 
+                title: '登录',
+                headerShown: false,
+              }} 
+            />
+            <Stack.Screen 
+              name="auth/register" 
+              options={{ 
+                title: '注册',
+                headerShown: false,
+              }} 
+            />
           <Stack.Screen 
             name="revenue-details" 
             options={{ 
@@ -298,9 +295,10 @@ export default function RootLayout() {
               headerShown: false
             }} 
           />
-        </Stack>
-        <StatusBar style="auto" />
-        </GestureHandlerRootView>
+          </Stack>
+          <StatusBar style="auto" />
+          </GestureHandlerRootView>
+        </AuthProvider>
       </QueryClientProvider>
     </Provider>
   )

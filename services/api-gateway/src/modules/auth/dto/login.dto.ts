@@ -19,6 +19,9 @@ export class LoginResponseDto {
   @ApiProperty()
   refreshToken: string
 
+  @ApiProperty({ description: '兼容前端的 token 字段', required: false })
+  token?: string
+
   @ApiProperty()
   user: {
     id: string
