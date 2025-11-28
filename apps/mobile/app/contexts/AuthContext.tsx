@@ -30,20 +30,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log('🔐 检查认证状态...')
       
-      const isAuth = await authService.isAuthenticated()
+      // 只检查本地是否有 token 和用户信息，不调用后端验证
+      const token = await authService.getToken()
+      const currentUser = await authService.getCurrentUser()
       
-      if (isAuth) {
-        // 验证token是否有效
-        const isValid = await authService.validateToken()
-        
-        if (isValid) {
-          const currentUser = await authService.getCurrentUser()
-          setUser(currentUser)
-          console.log('✅ 用户已登录:', currentUser?.email)
-        } else {
-          console.log('❌ Token无效，需要重新登录')
-          setUser(null)
-        }
+      if (token && currentUser) {
+        setUser(currentUser)
+        console.log('✅ 用户已登录:', currentUser?.email)
       } else {
         console.log('ℹ️ 用户未登录')
         setUser(null)
@@ -86,6 +79,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (result.success && result.data) {
         setUser(result.data.user)
         console.log('✅ 登录成功:', result.data.user.email)
+        // 登录成功后直接跳转，不再等待路由守卫
+        setTimeout(() => {
+          router.replace('/(tabs)')
+        }, 100)
       }
       
       return result
@@ -105,6 +102,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (result.success && result.data) {
         setUser(result.data.user)
         console.log('✅ 注册成功:', result.data.user.email)
+        // 注册成功后直接跳转
+        setTimeout(() => {
+          router.replace('/(tabs)')
+        }, 100)
       }
       
       return result
