@@ -15,7 +15,7 @@ import { DatabaseModule } from '../../services/database/database.module'
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get('JWT_SECRET') || 'secret-key',
-        signOptions: { expiresIn: '15m' },
+        signOptions: { expiresIn: '90d' }, // 访问令牌90天
       }),
       inject: [ConfigService],
     }),
