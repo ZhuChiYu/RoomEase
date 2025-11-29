@@ -14,9 +14,10 @@ import {
   TextInput,
   KeyboardAvoidingView,
 } from 'react-native'
+import { FontSizes, Spacings, ComponentSizes } from './utils/responsive'
 import { useRouter, useLocalSearchParams } from 'expo-router'
 import { useAppDispatch, useAppSelector } from './store/hooks'
-import { cancelReservation, setReservations, setRoomStatuses } from './store/calendarSlice'
+import { cancelReservation } from './store/calendarSlice'
 import { dataService } from './services/dataService'
 
 export default function OrderDetailsScreen() {
@@ -386,36 +387,6 @@ export default function OrderDetailsScreen() {
                           console.log('💾 调用API取消预订...')
                           await dataService.reservations.cancel(reservationId)
                           
-                          console.log('✅ 取消成功，立即刷新数据...')
-                          
-                          // 立即重新加载最新数据
-                          const today = new Date()
-                          const startDate = new Date(today)
-                          startDate.setDate(today.getDate() - 30)
-                          const endDate = new Date(today)
-                          endDate.setDate(today.getDate() + 30)
-                          
-                          const startDateStr = startDate.toISOString().split('T')[0]
-                          const endDateStr = endDate.toISOString().split('T')[0]
-                          
-                          // 并行加载所有数据
-                          const [updatedReservations, updatedRoomStatuses] = await Promise.all([
-                            dataService.reservations.getAll({
-                              startDate: startDateStr,
-                              endDate: endDateStr,
-                            }),
-                            dataService.roomStatus.getByDateRange(startDateStr, endDateStr)
-                          ])
-                          
-                          // 立即更新Redux
-                          dispatch(setReservations(updatedReservations))
-                          dispatch(setRoomStatuses(Array.isArray(updatedRoomStatuses) ? updatedRoomStatuses : []))
-                          
-                          console.log('🔄 Redux数据已更新:', {
-                            预订数: updatedReservations.length,
-                            房态数: Array.isArray(updatedRoomStatuses) ? updatedRoomStatuses.length : 0
-                          })
-                          
                           console.log('✅ 取消成功！')
                           
                           Alert.alert('已取消', '订单已取消', [
@@ -681,30 +652,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: Spacings.lg,
+    paddingVertical: Spacings.md,
     paddingTop: Platform.OS === 'ios' ? 50 : StatusBar.currentHeight ? StatusBar.currentHeight + 12 : 12,
     backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
   backButton: {
-    padding: 4,
+    padding: Spacings.xs,
   },
   backText: {
-    fontSize: 24,
+    fontSize: FontSizes.xxlarge,
     color: '#333',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: FontSizes.large,
     fontWeight: '600',
     color: '#333',
   },
   menuButton: {
-    padding: 4,
+    padding: Spacings.xs,
   },
   menuText: {
-    fontSize: 24,
+    fontSize: FontSizes.xxlarge,
     color: '#333',
   },
   menuOverlay: {
@@ -721,7 +692,7 @@ const styles = StyleSheet.create({
     top: Platform.OS === 'ios' ? 60 : 50,
     right: 16,
     backgroundColor: 'white',
-    borderRadius: 8,
+    borderRadius: ComponentSizes.borderRadius,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
@@ -732,10 +703,10 @@ const styles = StyleSheet.create({
   },
   menuItem: {
     paddingVertical: 14,
-    paddingHorizontal: 20,
+    paddingHorizontal: Spacings.xl,
   },
   menuItemText: {
-    fontSize: 15,
+    fontSize: FontSizes.normal,
     color: '#333',
     textAlign: 'center',
   },
@@ -751,7 +722,7 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: Spacings.md,
     alignItems: 'center',
   },
   activeTab: {
@@ -759,7 +730,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#4a90e2',
   },
   tabText: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#666',
   },
   activeTabText: {
@@ -771,46 +742,46 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: 'white',
-    marginTop: 12,
-    padding: 16,
+    marginTop: Spacings.md,
+    padding: Spacings.lg,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: Spacings.md,
   },
   guestName: {
-    fontSize: 16,
+    fontSize: FontSizes.medium,
     fontWeight: '600',
     color: '#333',
   },
   statusBadge: {
     backgroundColor: '#4a90e2',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: Spacings.md,
+    paddingVertical: Spacings.xs,
+    borderRadius: ComponentSizes.borderRadiusLarge,
   },
   statusText: {
-    fontSize: 12,
+    fontSize: FontSizes.small,
     color: 'white',
     fontWeight: '600',
   },
   actionButtons: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 12,
+    marginBottom: Spacings.md,
   },
   iconButton: {
     width: 40,
-    height: 40,
+    minHeight: ComponentSizes.buttonHeightSmall,
     borderRadius: 20,
     backgroundColor: '#f0f0f0',
     justifyContent: 'center',
     alignItems: 'center',
   },
   iconButtonIcon: {
-    fontSize: 20,
+    fontSize: FontSizes.xlarge,
   },
   tagContainer: {
     flexDirection: 'row',
@@ -818,53 +789,53 @@ const styles = StyleSheet.create({
   },
   tag: {
     backgroundColor: '#e3f2fd',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: Spacings.md,
+    paddingVertical: Spacings.xs,
+    borderRadius: ComponentSizes.borderRadiusLarge,
   },
   tagText: {
-    fontSize: 12,
+    fontSize: FontSizes.small,
     color: '#1976d2',
   },
   amountCard: {
     backgroundColor: '#f8f9fa',
-    marginTop: 12,
-    padding: 16,
+    marginTop: Spacings.md,
+    padding: Spacings.lg,
   },
   amountLabel: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#666',
-    marginBottom: 4,
+    marginBottom: Spacings.xs,
   },
   amountValue: {
-    fontSize: 24,
+    fontSize: FontSizes.xxlarge,
     fontWeight: 'bold',
     color: '#4a90e2',
-    marginBottom: 4,
+    marginBottom: Spacings.xs,
   },
   amountDetail: {
-    fontSize: 12,
+    fontSize: FontSizes.small,
     color: '#999',
   },
   roomHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: Spacings.md,
   },
   roomTitle: {
-    fontSize: 16,
+    fontSize: FontSizes.medium,
     fontWeight: '600',
     color: '#333',
   },
   roomStatusBadge: {
     backgroundColor: '#e8f5e9',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: Spacings.md,
+    paddingVertical: Spacings.xs,
+    borderRadius: ComponentSizes.borderRadiusLarge,
   },
   roomStatusText: {
-    fontSize: 12,
+    fontSize: FontSizes.small,
     color: '#2e7d32',
     fontWeight: '600',
   },
@@ -872,14 +843,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: Spacings.md,
   },
   roomInfoText: {
-    fontSize: 13,
+    fontSize: FontSizes.small,
     color: '#666',
   },
   roomPrice: {
-    fontSize: 16,
+    fontSize: FontSizes.medium,
     fontWeight: '600',
     color: '#333',
   },
@@ -887,16 +858,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: Spacings.sm,
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
   },
   guestCountLabel: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#666',
   },
   guestCountValue: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#333',
   },
   sectionHeader: {
@@ -905,45 +876,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: FontSizes.normal,
     fontWeight: '600',
     color: '#333',
   },
   addButton: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#4a90e2',
   },
   remainingCard: {
     backgroundColor: 'white',
-    marginTop: 12,
-    padding: 16,
+    marginTop: Spacings.md,
+    padding: Spacings.lg,
     alignItems: 'flex-end',
   },
   remainingLabel: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#666',
-    marginBottom: 4,
+    marginBottom: Spacings.xs,
   },
   remainingAmount: {
-    fontSize: 20,
+    fontSize: FontSizes.xlarge,
     fontWeight: 'bold',
     color: '#e74c3c',
   },
   footer: {
     backgroundColor: 'white',
-    padding: 16,
-    paddingBottom: 24,
+    padding: Spacings.lg,
+    paddingBottom: Spacings.xxl,
     borderTopWidth: 1,
     borderTopColor: '#e0e0e0',
   },
   checkoutButton: {
     backgroundColor: '#4a90e2',
     paddingVertical: 14,
-    borderRadius: 8,
+    borderRadius: ComponentSizes.borderRadius,
     alignItems: 'center',
   },
   checkoutButtonText: {
-    fontSize: 16,
+    fontSize: FontSizes.medium,
     fontWeight: '600',
     color: 'white',
   },
@@ -955,25 +926,25 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 24,
+    borderRadius: ComponentSizes.borderRadiusLarge,
+    padding: Spacings.xxl,
     width: '85%',
     maxWidth: 400,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: FontSizes.large,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 20,
+    marginBottom: Spacings.xl,
     textAlign: 'center',
   },
   modalInput: {
     borderWidth: 1,
     borderColor: '#e0e0e0',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 15,
-    marginBottom: 16,
+    borderRadius: ComponentSizes.borderRadius,
+    padding: Spacings.md,
+    fontSize: FontSizes.normal,
+    marginBottom: Spacings.lg,
   },
   reminderTextArea: {
     height: 100,
@@ -982,12 +953,12 @@ const styles = StyleSheet.create({
   modalButtons: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 8,
+    marginTop: Spacings.sm,
   },
   modalButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: Spacings.md,
+    borderRadius: ComponentSizes.borderRadius,
     alignItems: 'center',
   },
   cancelButton: {
@@ -997,23 +968,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#4a90e2',
   },
   cancelButtonText: {
-    fontSize: 15,
+    fontSize: FontSizes.normal,
     color: '#666',
     fontWeight: '600',
   },
   confirmButtonText: {
-    fontSize: 15,
+    fontSize: FontSizes.normal,
     color: 'white',
     fontWeight: '600',
   },
   reminderList: {
-    marginTop: 12,
+    marginTop: Spacings.md,
   },
   reminderItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: Spacings.md,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
@@ -1021,24 +992,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   reminderText: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#333',
-    marginBottom: 4,
+    marginBottom: Spacings.xs,
   },
   reminderTime: {
-    fontSize: 12,
+    fontSize: FontSizes.small,
     color: '#999',
   },
   reminderActions: {
     flexDirection: 'row',
     gap: 12,
-    marginLeft: 12,
+    marginLeft: Spacings.md,
   },
   reminderEditIcon: {
-    fontSize: 18,
+    fontSize: FontSizes.large,
   },
   reminderDeleteIcon: {
-    fontSize: 18,
+    fontSize: FontSizes.large,
   },
 })
 
