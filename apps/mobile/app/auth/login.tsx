@@ -16,6 +16,8 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { useAuth } from '../contexts/AuthContext'
 import accountHistoryService, { AccountHistory } from '../services/accountHistoryService'
+import { FontSizes, Spacings, ComponentSizes } from '../utils/responsive'
+import { CustomAlert } from '../utils/CustomAlert'
 
 export default function LoginScreen() {
   const router = useRouter()
@@ -25,6 +27,14 @@ export default function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false)
   const [accountHistory, setAccountHistory] = useState<AccountHistory[]>([])
   const [showHistory, setShowHistory] = useState(true)
+  
+  // 自定义Alert状态
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    buttons: [] as any[],
+  })
 
   // 加载历史账号
   useEffect(() => {
@@ -44,14 +54,24 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     // 验证输入
     if (!email.trim() || !password.trim()) {
-      Alert.alert('提示', '请输入邮箱和密码')
+      setAlertConfig({
+        visible: true,
+        title: '提示',
+        message: '请输入邮箱和密码',
+        buttons: [{ text: '确定', style: 'default' }],
+      })
       return
     }
 
     // 验证邮箱格式
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(email)) {
-      Alert.alert('提示', '请输入有效的邮箱地址')
+      setAlertConfig({
+        visible: true,
+        title: '提示',
+        message: '请输入有效的邮箱地址',
+        buttons: [{ text: '确定', style: 'default' }],
+      })
       return
     }
 
@@ -69,12 +89,27 @@ export default function LoginScreen() {
         )
         
         // AuthContext 会自动跳转，这里只显示提示
-        Alert.alert('登录成功', '欢迎回来！')
+        setAlertConfig({
+          visible: true,
+          title: '登录成功',
+          message: '欢迎回来！',
+          buttons: [{ text: '确定', style: 'default' }],
+        })
       } else {
-        Alert.alert('登录失败', result.error || '登录失败，请检查用户名和密码')
+        setAlertConfig({
+          visible: true,
+          title: '登录失败',
+          message: result.error || '登录失败，请检查用户名和密码',
+          buttons: [{ text: '确定', style: 'default' }],
+        })
       }
     } catch (error: any) {
-      Alert.alert('错误', error.message || '登录时发生错误，请稍后重试')
+      setAlertConfig({
+        visible: true,
+        title: '错误',
+        message: error.message || '登录时发生错误，请稍后重试',
+        buttons: [{ text: '确定', style: 'default' }],
+      })
     } finally {
       setIsLoading(false)
     }
@@ -89,10 +124,11 @@ export default function LoginScreen() {
 
   // 删除历史账号
   const deleteAccount = async (email: string) => {
-    Alert.alert(
-      '确认删除',
-      `确定要删除账号 ${email} 的历史记录吗？`,
-      [
+    setAlertConfig({
+      visible: true,
+      title: '确认删除',
+      message: `确定要删除账号 ${email} 的历史记录吗？`,
+      buttons: [
         { text: '取消', style: 'cancel' },
         {
           text: '删除',
@@ -102,8 +138,8 @@ export default function LoginScreen() {
             await loadAccountHistory()
           },
         },
-      ]
-    )
+      ],
+    })
   }
 
   // 格式化时间显示
@@ -262,6 +298,15 @@ export default function LoginScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      
+      {/* 自定义弹窗 */}
+      <CustomAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        buttons={alertConfig.buttons}
+        onDismiss={() => setAlertConfig({ ...alertConfig, visible: false })}
+      />
     </SafeAreaView>
   )
 }
@@ -276,69 +321,71 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 24,
+    padding: Spacings.xl,
   },
   header: {
     alignItems: 'center',
-    marginTop: 40,
-    marginBottom: 40,
+    marginTop: Spacings.xxxl,
+    marginBottom: Spacings.xxxl,
   },
   logo: {
-    fontSize: 64,
-    marginBottom: 16,
+    fontSize: FontSizes.giant,
+    marginBottom: Spacings.lg,
   },
   title: {
-    fontSize: 32,
+    fontSize: FontSizes.huge,
     fontWeight: 'bold',
     color: '#1f2937',
-    marginBottom: 8,
+    marginBottom: Spacings.sm,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: FontSizes.medium,
     color: '#6b7280',
   },
   form: {
     width: '100%',
   },
   inputContainer: {
-    marginBottom: 20,
+    marginBottom: Spacings.lg,
   },
   label: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     fontWeight: '600',
     color: '#374151',
-    marginBottom: 8,
+    marginBottom: Spacings.sm,
   },
   input: {
-    height: 50,
+    minHeight: ComponentSizes.inputHeight,
     borderWidth: 1,
     borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    fontSize: 16,
+    borderRadius: ComponentSizes.borderRadius,
+    paddingHorizontal: Spacings.lg,
+    paddingVertical: Spacings.md,
+    fontSize: FontSizes.medium,
     backgroundColor: '#fff',
   },
   forgotPassword: {
     alignSelf: 'flex-end',
-    marginBottom: 24,
+    marginBottom: Spacings.xl,
   },
   forgotPasswordText: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#6366f1',
   },
   loginButton: {
-    height: 50,
+    minHeight: ComponentSizes.buttonHeight,
     backgroundColor: '#6366f1',
-    borderRadius: 8,
+    borderRadius: ComponentSizes.borderRadius,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: Spacings.lg,
+    paddingVertical: Spacings.md,
   },
   loginButtonDisabled: {
     backgroundColor: '#9ca3af',
   },
   loginButtonText: {
-    fontSize: 16,
+    fontSize: FontSizes.medium,
     fontWeight: '600',
     color: '#fff',
   },
@@ -346,33 +393,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    flexWrap: 'wrap',
   },
   registerText: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#6b7280',
     marginRight: 4,
   },
   registerLink: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     fontWeight: '600',
     color: '#6366f1',
   },
   footer: {
     marginTop: 'auto',
-    paddingTop: 24,
+    paddingTop: Spacings.xl,
     alignItems: 'center',
   },
   footerText: {
-    fontSize: 12,
+    fontSize: FontSizes.small,
     color: '#9ca3af',
     textAlign: 'center',
   },
   // 历史账号样式
   historyContainer: {
-    marginBottom: 24,
+    marginBottom: Spacings.xl,
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: ComponentSizes.borderRadiusLarge,
+    padding: Spacings.lg,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -383,23 +431,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: Spacings.md,
   },
   historyTitle: {
-    fontSize: 16,
+    fontSize: FontSizes.medium,
     fontWeight: '600',
     color: '#1f2937',
   },
   hideHistoryText: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#6366f1',
   },
   historyItem: {
     width: 100,
     alignItems: 'center',
-    padding: 12,
-    marginRight: 12,
-    borderRadius: 8,
+    padding: Spacings.md,
+    marginRight: Spacings.md,
+    borderRadius: ComponentSizes.borderRadius,
     backgroundColor: '#f9fafb',
     borderWidth: 2,
     borderColor: 'transparent',
@@ -415,47 +463,49 @@ const styles = StyleSheet.create({
     backgroundColor: '#6366f1',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: Spacings.sm,
   },
   historyAvatarText: {
-    fontSize: 24,
+    fontSize: FontSizes.xlarge,
     fontWeight: 'bold',
     color: '#fff',
   },
   historyName: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     fontWeight: '600',
     color: '#1f2937',
     marginBottom: 2,
     textAlign: 'center',
     width: '100%',
+    numberOfLines: 1,
   },
   historyEmail: {
-    fontSize: 11,
+    fontSize: FontSizes.tiny,
     color: '#6b7280',
     marginBottom: 4,
     textAlign: 'center',
     width: '100%',
+    numberOfLines: 1,
   },
   historyTime: {
-    fontSize: 10,
+    fontSize: FontSizes.tiny,
     color: '#9ca3af',
     textAlign: 'center',
   },
   historyHint: {
-    fontSize: 11,
+    fontSize: FontSizes.tiny,
     color: '#9ca3af',
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: Spacings.sm,
   },
   showHistoryButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 16,
+    paddingVertical: Spacings.sm,
+    paddingHorizontal: Spacings.md,
+    marginBottom: Spacings.lg,
     alignSelf: 'flex-start',
   },
   showHistoryText: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#6366f1',
     fontWeight: '500',
   },
