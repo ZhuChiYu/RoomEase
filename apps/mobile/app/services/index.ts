@@ -14,6 +14,9 @@ export {
   addNotificationResponseListener
 } from './notifications'
 
+// 导出账号历史服务
+export { default as accountHistoryService } from './accountHistoryService'
+
 console.log('📊 [Services] 使用云服务API（带智能缓存）')
 
 export { dataService }

@@ -83,13 +83,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTimeout(() => {
           router.replace('/(tabs)')
         }, 100)
+        return result
+      } else {
+        // 登录失败，返回服务器返回的错误信息
+        return {
+          success: false,
+          error: result.error || '登录失败，请检查用户名和密码',
+        }
       }
-      
-      return result
     } catch (error: any) {
+      console.error('登录异常:', error)
+      // 如果是网络错误或其他异常，返回友好提示
       return {
         success: false,
-        error: error.message || '登录失败',
+        error: '登录失败，请检查网络连接后重试',
       }
     }
   }
@@ -106,13 +113,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTimeout(() => {
           router.replace('/(tabs)')
         }, 100)
+        return result
+      } else {
+        // 注册失败，返回服务器返回的错误信息
+        return {
+          success: false,
+          error: result.error || '注册失败，请稍后重试',
+        }
       }
-      
-      return result
     } catch (error: any) {
+      console.error('注册异常:', error)
+      // 如果是网络错误或其他异常，返回友好提示
       return {
         success: false,
-        error: error.message || '注册失败',
+        error: '注册失败，请检查网络连接后重试',
       }
     }
   }
