@@ -16,7 +16,8 @@ import {
 } from 'react-native'
 import { useRouter, useLocalSearchParams } from 'expo-router'
 import { useAppDispatch, useAppSelector } from './store/hooks'
-import { cancelReservation } from './store/calendarSlice'
+import { cancelReservation, setReservations, setRoomStatuses } from './store/calendarSlice'
+import { dataService } from './services/dataService'
 
 export default function OrderDetailsScreen() {
   const router = useRouter()
@@ -381,14 +382,39 @@ export default function OrderDetailsScreen() {
                           const reservationId = currentReservation.id
                           console.log('✅ 找到预订ID:', reservationId)
                           
-                          // 取消Redux中的预订
-                          console.log('🔄 更新Redux状态...')
-                          dispatch(cancelReservation(reservationId))
-                          
-                          // 同时调用dataService更新持久化存储
-                          console.log('💾 持久化到本地存储...')
-                          const { dataService } = await import('./services/dataService')
+                          // 调用 dataService 取消预订（会自动清除缓存）
+                          console.log('💾 调用API取消预订...')
                           await dataService.reservations.cancel(reservationId)
+                          
+                          console.log('✅ 取消成功，立即刷新数据...')
+                          
+                          // 立即重新加载最新数据
+                          const today = new Date()
+                          const startDate = new Date(today)
+                          startDate.setDate(today.getDate() - 30)
+                          const endDate = new Date(today)
+                          endDate.setDate(today.getDate() + 30)
+                          
+                          const startDateStr = startDate.toISOString().split('T')[0]
+                          const endDateStr = endDate.toISOString().split('T')[0]
+                          
+                          // 并行加载所有数据
+                          const [updatedReservations, updatedRoomStatuses] = await Promise.all([
+                            dataService.reservations.getAll({
+                              startDate: startDateStr,
+                              endDate: endDateStr,
+                            }),
+                            dataService.roomStatus.getByDateRange(startDateStr, endDateStr)
+                          ])
+                          
+                          // 立即更新Redux
+                          dispatch(setReservations(updatedReservations))
+                          dispatch(setRoomStatuses(Array.isArray(updatedRoomStatuses) ? updatedRoomStatuses : []))
+                          
+                          console.log('🔄 Redux数据已更新:', {
+                            预订数: updatedReservations.length,
+                            房态数: Array.isArray(updatedRoomStatuses) ? updatedRoomStatuses.length : 0
+                          })
                           
                           console.log('✅ 取消成功！')
                           

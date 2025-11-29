@@ -16,7 +16,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router'
 import { DateWheelPicker } from './components/DateWheelPicker'
 import { useAppDispatch, useAppSelector } from './store/hooks'
 import { dataService } from './services/dataService'
-import { setReservations } from './store/calendarSlice'
+import { setReservations, setRoomStatuses } from './store/calendarSlice'
 
 export default function EditOrderScreen() {
   const router = useRouter()
@@ -163,12 +163,12 @@ export default function EditOrderScreen() {
       
       console.log('📤 [修改订单] 更新数据:', updateData)
       
-      // 调用API更新预订
+      // 调用API更新预订（dataService 内部会自动清除缓存）
       await dataService.reservations.update(reservationId, updateData)
       
-      console.log('✅ [修改订单] 更新成功')
+      console.log('✅ [修改订单] 更新成功，立即刷新数据...')
       
-      // 重新加载预订列表
+      // 立即重新加载最新数据，确保返回房态日历时能立刻看到更新
       const today = new Date()
       const startDate = new Date(today)
       startDate.setDate(today.getDate() - 30)
@@ -178,12 +178,23 @@ export default function EditOrderScreen() {
       const startDateStr = startDate.toISOString().split('T')[0]
       const endDateStr = endDate.toISOString().split('T')[0]
       
-      const updatedReservations = await dataService.reservations.getAll({
-        startDate: startDateStr,
-        endDate: endDateStr,
-      })
+      // 并行加载所有数据
+      const [updatedReservations, updatedRoomStatuses] = await Promise.all([
+        dataService.reservations.getAll({
+          startDate: startDateStr,
+          endDate: endDateStr,
+        }),
+        dataService.roomStatus.getByDateRange(startDateStr, endDateStr)
+      ])
       
+      // 立即更新Redux，确保房态日历能立刻显示最新数据
       dispatch(setReservations(updatedReservations))
+      dispatch(setRoomStatuses(Array.isArray(updatedRoomStatuses) ? updatedRoomStatuses : []))
+      
+      console.log('🔄 [修改订单] Redux数据已更新:', {
+        预订数: updatedReservations.length,
+        房态数: Array.isArray(updatedRoomStatuses) ? updatedRoomStatuses.length : 0
+      })
       
       Alert.alert(
         '保存成功',

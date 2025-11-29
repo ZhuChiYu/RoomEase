@@ -332,12 +332,41 @@ export default function ReservationsScreen() {
             try {
               console.log('🗑️ 删除预订:', id)
               
-              // 1. 从Redux删除
-              dispatch(deleteReservation(id))
-              
-              // 2. 从持久化存储删除
-              const { dataService } = await import('../services/dataService')
+              // 调用 dataService 删除预订（会自动清除缓存）
               await dataService.reservations.delete(id)
+              
+              console.log('✅ 删除成功，立即刷新数据...')
+              
+              // 立即重新加载最新数据
+              const today = new Date()
+              const startDate = new Date(today)
+              startDate.setDate(today.getDate() - 90)
+              const endDate = new Date(today)
+              endDate.setDate(today.getDate() + 30)
+              
+              const startDateStr = startDate.toISOString().split('T')[0]
+              const endDateStr = endDate.toISOString().split('T')[0]
+              
+              // 并行加载所有数据
+              const [roomsData, reservationsData, roomStatusesData] = await Promise.all([
+                dataService.rooms.getAll(),
+                dataService.reservations.getAll({
+                  startDate: startDateStr,
+                  endDate: endDateStr,
+                }),
+                dataService.roomStatus.getByDateRange(startDateStr, endDateStr)
+              ])
+              
+              // 立即更新Redux
+              dispatch(setRooms(roomsData))
+              dispatch(setReservations(reservationsData))
+              dispatch(setRoomStatuses(Array.isArray(roomStatusesData) ? roomStatusesData : []))
+              
+              console.log('🔄 Redux数据已更新:', {
+                房间数: roomsData.length,
+                预订数: reservationsData.length,
+                房态数: Array.isArray(roomStatusesData) ? roomStatusesData.length : 0
+              })
               
               Alert.alert('成功', '预订已删除')
             } catch (error: any) {
