@@ -20,7 +20,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: any) {
     const user = await this.authService.validateUser(payload.sub, payload.tenantId)
     if (!user) {
-      throw new UnauthorizedException()
+      throw new UnauthorizedException('登录已过期，请重新登录')
     }
     return user
   }

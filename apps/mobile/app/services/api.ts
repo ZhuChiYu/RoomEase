@@ -4,47 +4,35 @@ import Constants from 'expo-constants'
 import { API_CONFIG } from '../config/environment'
 import { getApiServerUrl } from './apiConfigService'
 
-// API Base URL - 从环境配置读取（初始值，会在运行时更新）
-let API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || API_CONFIG.BASE_URL
-
-// 异步加载保存的服务器地址
-getApiServerUrl().then(url => {
-  API_BASE_URL = url
-  apiClient.defaults.baseURL = url
-  logger.log('API服务器地址已更新', { baseURL: url })
-}).catch(err => {
-  logger.error('加载API服务器地址失败', err)
-})
-
 // 日志工具类
 class APILogger {
   private enabled: boolean = API_CONFIG.ENABLE_LOGGING
 
-  log(message: string, data?: any) {
+  log(message: string, data?: any): void {
     if (!this.enabled) return
     const timestamp = new Date().toISOString()
     console.log(`[API LOG ${timestamp}] ${message}`, data || '')
   }
 
-  error(message: string, error?: any) {
+  error(message: string, error?: any): void {
     if (!this.enabled) return
     const timestamp = new Date().toISOString()
     console.error(`[API ERROR ${timestamp}] ${message}`, error || '')
   }
 
-  success(message: string, data?: any) {
+  success(message: string, data?: any): void {
     if (!this.enabled) return
     const timestamp = new Date().toISOString()
     console.log(`[API SUCCESS ${timestamp}] ✅ ${message}`, data || '')
   }
 
-  request(method: string, url: string, data?: any) {
+  request(method: string, url: string, data?: any): void {
     if (!this.enabled) return
     const timestamp = new Date().toISOString()
     console.log(`[API REQUEST ${timestamp}] 🚀 ${method.toUpperCase()} ${url}`, data || '')
   }
 
-  response(method: string, url: string, status: number, duration: number) {
+  response(method: string, url: string, status: number, duration: number): void {
     if (!this.enabled) return
     const timestamp = new Date().toISOString()
     console.log(`[API RESPONSE ${timestamp}] ✅ ${method.toUpperCase()} ${url} - ${status} (${duration}ms)`)
@@ -52,6 +40,9 @@ class APILogger {
 }
 
 const logger = new APILogger()
+
+// API Base URL - 从环境配置读取（初始值，会在运行时更新）
+let API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || API_CONFIG.BASE_URL
 
 // 记录API基础信息
 logger.log('API服务初始化', {
@@ -67,6 +58,15 @@ const apiClient: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+})
+
+// 异步加载保存的服务器地址
+getApiServerUrl().then(url => {
+  API_BASE_URL = url
+  apiClient.defaults.baseURL = url
+  logger.log('API服务器地址已更新', { baseURL: url })
+}).catch(err => {
+  logger.error('加载API服务器地址失败', err)
 })
 
 // 请求拦截器 - 添加认证token和日志
@@ -128,12 +128,30 @@ apiClient.interceptors.response.use(
         url: response.config.url,
         data: response.data,
       })
+      
+      // 如果响应中包含新的token，自动保存
+      if (response.data?.token || response.data?.accessToken) {
+        const newToken = response.data.token || response.data.accessToken
+        AsyncStorage.setItem('@auth_token', newToken).then(() => {
+          logger.log('✅ 已更新Token')
+        }).catch(err => {
+          logger.error('保存Token失败', err)
+        })
+      }
+      
+      // 如果有refreshToken，也保存起来
+      if (response.data?.refreshToken) {
+        AsyncStorage.setItem('@refresh_token', response.data.refreshToken).catch(err => {
+          logger.error('保存RefreshToken失败', err)
+        })
+      }
     }
     
     return response
   },
   async (error: AxiosError) => {
     const duration = new Date().getTime() - (error.config?.metadata?.startTime || 0)
+    const originalRequest = error.config
     
     // 记录错误详情
     if (error.response) {
@@ -160,12 +178,114 @@ apiClient.interceptors.response.use(
       })
     }
 
-    if (error.response?.status === 401) {
-      // Token过期或无效，清除本地token
-      logger.log('认证失败，清除Token')
-      await AsyncStorage.removeItem('@auth_token')
-      // 可以在这里触发导航到登录页面
+    // 处理401错误 - Token过期或无效
+    if (error.response?.status === 401 && originalRequest && !(originalRequest as any)._retry) {
+      logger.log('🔄 检测到401错误，尝试刷新Token...')
+      
+      // 标记该请求已重试，避免无限循环
+      (originalRequest as any)._retry = true
+      
+      try {
+        // 尝试使用refreshToken获取新的accessToken
+        const refreshToken = await AsyncStorage.getItem('@refresh_token')
+        
+        if (refreshToken) {
+          logger.log('📤 正在使用RefreshToken刷新...')
+          
+          // 调用刷新接口
+          const refreshResponse = await axios.post(
+            `${API_BASE_URL}/auth/refresh`,
+            { refreshToken },
+            {
+              headers: { 'Content-Type': 'application/json' }
+            }
+          )
+          
+          const { accessToken, refreshToken: newRefreshToken } = refreshResponse.data
+          
+          if (accessToken) {
+            // 保存新的tokens
+            await AsyncStorage.setItem('@auth_token', accessToken)
+            if (newRefreshToken) {
+              await AsyncStorage.setItem('@refresh_token', newRefreshToken)
+            }
+            
+            logger.success('✅ Token刷新成功，重试原请求')
+            
+            // 更新原请求的Authorization header
+            if (originalRequest.headers) {
+              originalRequest.headers.Authorization = `Bearer ${accessToken}`
+            }
+            
+            // 重试原请求
+            return apiClient(originalRequest)
+          }
+        } else {
+          logger.log('⚠️ 未找到RefreshToken')
+        }
+      } catch (refreshError: any) {
+        logger.error('❌ Token刷新失败', refreshError)
+        
+        // 刷新失败，清除所有认证信息
+        await AsyncStorage.removeItem('@auth_token')
+        await AsyncStorage.removeItem('@refresh_token')
+        
+        // 转换为中文错误消息
+        error.message = '登录已过期，请重新登录'
+        return Promise.reject(error)
+      }
     }
+    
+    // 转换错误消息为中文
+    if (error.response) {
+      const status = error.response.status
+      const serverMessage = (error.response.data as any)?.message || (error.response.data as any)?.error
+      
+      // 根据状态码提供中文错误提示
+      switch (status) {
+        case 400:
+          error.message = serverMessage || '请求参数错误'
+          break
+        case 401:
+          error.message = serverMessage || '登录已过期，请重新登录'
+          break
+        case 403:
+          error.message = serverMessage || '没有权限执行此操作'
+          break
+        case 404:
+          error.message = serverMessage || '请求的资源不存在'
+          break
+        case 409:
+          error.message = serverMessage || '数据冲突，请刷新后重试'
+          break
+        case 422:
+          error.message = serverMessage || '数据验证失败'
+          break
+        case 500:
+          error.message = serverMessage || '服务器内部错误，请稍后重试'
+          break
+        case 502:
+        case 503:
+        case 504:
+          error.message = serverMessage || '服务暂时不可用，请稍后重试'
+          break
+        default:
+          error.message = serverMessage || `请求失败 (${status})`
+      }
+    } else if (error.request) {
+      // 网络错误
+      if (error.code === 'ECONNABORTED') {
+        error.message = '请求超时，请检查网络连接'
+      } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+        error.message = '无法连接到服务器，请检查网络设置'
+      } else {
+        error.message = '网络连接失败，请检查网络后重试'
+      }
+    } else {
+      error.message = error.message || '未知错误，请重试'
+    }
+    
+    logger.error('最终错误消息', error.message)
     
     return Promise.reject(error)
   }
@@ -183,7 +303,7 @@ declare module 'axios' {
 // 健康检查和连接测试
 export const healthCheck = async () => {
   logger.log('🏥 开始服务器健康检查...')
-  logger.log('目标服务器', { baseURL: API_BASE_URL })
+  logger.log('目标服务器', { baseURL: apiClient.defaults.baseURL || API_BASE_URL })
   
   try {
     const startTime = Date.now()
@@ -196,7 +316,7 @@ export const healthCheck = async () => {
       status: response.status,
       data: response.data,
       duration: `${duration}ms`,
-      server: API_BASE_URL,
+      server: apiClient.defaults.baseURL || API_BASE_URL,
     })
     
     return {
@@ -204,20 +324,20 @@ export const healthCheck = async () => {
       status: response.status,
       data: response.data,
       duration,
-      server: API_BASE_URL,
+      server: apiClient.defaults.baseURL || API_BASE_URL,
     }
   } catch (error: any) {
     logger.error('服务器健康检查失败', {
       message: error.message,
       code: error.code,
-      server: API_BASE_URL,
+      server: apiClient.defaults.baseURL || API_BASE_URL,
     })
     
     return {
       success: false,
       error: error.message,
       code: error.code,
-      server: API_BASE_URL,
+      server: apiClient.defaults.baseURL || API_BASE_URL,
     }
   }
 }
@@ -276,9 +396,18 @@ export const api = {
                    response.data?.access_token ||
                    response.data?.data?.token
       
+      const refreshToken = response.data?.refreshToken || 
+                          response.data?.refresh_token
+      
       if (token) {
         logger.log('✅ 找到Token，准备保存', { tokenLength: token.length })
         await AsyncStorage.setItem('@auth_token', token)
+        
+        // 保存refreshToken用于自动刷新
+        if (refreshToken) {
+          logger.log('✅ 找到RefreshToken，准备保存')
+          await AsyncStorage.setItem('@refresh_token', refreshToken)
+        }
       } else {
         logger.log('⚠️ 响应中未找到Token', response.data)
       }
@@ -301,9 +430,18 @@ export const api = {
                    response.data?.access_token ||
                    response.data?.data?.token
       
+      const refreshToken = response.data?.refreshToken || 
+                          response.data?.refresh_token
+      
       if (token) {
         logger.log('✅ 找到Token，准备保存', { tokenLength: token.length })
         await AsyncStorage.setItem('@auth_token', token)
+        
+        // 保存refreshToken用于自动刷新
+        if (refreshToken) {
+          logger.log('✅ 找到RefreshToken，准备保存')
+          await AsyncStorage.setItem('@refresh_token', refreshToken)
+        }
       } else {
         logger.log('⚠️ 响应中未找到Token', response.data)
       }
@@ -317,13 +455,18 @@ export const api = {
         // 忽略后端登出错误
       }
       await AsyncStorage.removeItem('@auth_token')
+      await AsyncStorage.removeItem('@refresh_token')
     },
     getCurrentUser: async () => {
       const response = await apiClient.get('/auth/me')
       return response.data
     },
     refreshToken: async () => {
-      const response = await apiClient.post('/auth/refresh')
+      const refreshToken = await AsyncStorage.getItem('@refresh_token')
+      if (!refreshToken) {
+        throw new Error('未找到刷新令牌')
+      }
+      const response = await apiClient.post('/auth/refresh', { refreshToken })
       return response.data
     },
   },

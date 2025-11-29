@@ -4,6 +4,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 import { ConfigService } from '@nestjs/config'
 import helmet from 'helmet'
 import { AppModule } from './app.module'
+import { HttpExceptionFilter } from './common/filters/http-exception.filter'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
@@ -43,6 +44,9 @@ async function bootstrap() {
       enableImplicitConversion: true
     }
   }))
+
+  // 全局异常过滤器 - 统一返回中文错误消息
+  app.useGlobalFilters(new HttpExceptionFilter())
 
   // Swagger API 文档
   if (configService.get('NODE_ENV') !== 'production') {

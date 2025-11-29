@@ -5,6 +5,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { api, logger } from './api'
+import accountHistoryService from './accountHistoryService'
 
 const TOKEN_KEY = '@auth_token'
 const USER_KEY = '@auth_user'
@@ -83,9 +84,17 @@ class AuthService {
     } catch (error: any) {
       logger.error('登录失败', error)
       
+      // 从error.message中获取中文错误消息（已被api.ts转换过）
+      let errorMessage = error.message || '登录失败，请检查用户名和密码'
+      
+      // 如果error.message还是英文，尝试从response中获取
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message
+      }
+      
       return {
         success: false,
-        error: error.response?.data?.message || error.message || '登录失败，请检查用户名和密码',
+        error: errorMessage,
       }
     }
   }
@@ -132,9 +141,17 @@ class AuthService {
     } catch (error: any) {
       logger.error('注册失败', error)
       
+      // 从error.message中获取中文错误消息（已被api.ts转换过）
+      let errorMessage = error.message || '注册失败，请稍后重试'
+      
+      // 如果error.message还是英文，尝试从response中获取
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message
+      }
+      
       return {
         success: false,
-        error: error.response?.data?.message || error.message || '注册失败，请稍后重试',
+        error: errorMessage,
       }
     }
   }
@@ -251,6 +268,7 @@ class AuthService {
       await AsyncStorage.removeItem(TOKEN_KEY)
       await AsyncStorage.removeItem(USER_KEY)
       await AsyncStorage.removeItem(PROPERTY_ID_KEY)
+      await AsyncStorage.removeItem('@refresh_token') // 也清除refresh token
       
       logger.log('认证数据已清除')
     } catch (error) {
