@@ -17,6 +17,7 @@ import { restoreState } from '../store/calendarSlice'
 import { persistedStorage, authStorage } from '../services/storage'
 import { useAuth } from '../contexts/AuthContext'
 import { dataService } from '../services/dataService'
+import { api } from '../services/api'
 
 interface UserInfo {
   name: string
@@ -216,7 +217,7 @@ export default function ProfileScreen() {
 
     try {
       // 调用API修改密码
-      const response = await dataService.api.auth.changePassword(
+      const response = await api.auth.changePassword(
         passwordData.oldPassword,
         passwordData.newPassword
       )
