@@ -41,15 +41,6 @@ class APILogger {
 
 const logger: APILogger = new APILogger()
 
-// 辅助函数：安全地调用logger
-const safeLog = (message: string, data?: any) => {
-  try {
-    logger.log(message, data)
-  } catch (e) {
-    console.log(message, data)
-  }
-}
-
 // Token刷新状态管理
 let isRefreshing = false
 let failedQueue: Array<{
@@ -223,7 +214,9 @@ apiClient.interceptors.response.use(
       }
 
       // 开始刷新token流程
-      safeLog('🔄 检测到401错误，尝试刷新Token...')
+      if (API_CONFIG.ENABLE_LOGGING) {
+        console.log('[API] 🔄 检测到401错误，尝试刷新Token...')
+      }
       
       // 标记该请求已重试，避免无限循环
       (originalRequest as any)._retry = true
@@ -234,7 +227,9 @@ apiClient.interceptors.response.use(
         const refreshToken = await AsyncStorage.getItem('@refresh_token')
         
         if (refreshToken) {
-          (logger as APILogger).log('📤 正在使用RefreshToken刷新...')
+          if (API_CONFIG.ENABLE_LOGGING) {
+            console.log('[API] 📤 正在使用RefreshToken刷新...')
+          }
           
           // 调用刷新接口
           const refreshResponse = await axios.post(
@@ -254,7 +249,9 @@ apiClient.interceptors.response.use(
               await AsyncStorage.setItem('@refresh_token', newRefreshToken)
             }
             
-            safeLog('✅ Token刷新成功，重试原请求')
+            if (API_CONFIG.ENABLE_LOGGING) {
+              console.log('[API] ✅ Token刷新成功，重试原请求')
+            }
             
             // 更新原请求的Authorization header
             if (originalRequest.headers) {
@@ -269,7 +266,9 @@ apiClient.interceptors.response.use(
             return apiClient(originalRequest)
           }
         } else {
-          safeLog('⚠️ 未找到RefreshToken')
+          if (API_CONFIG.ENABLE_LOGGING) {
+            console.log('[API] ⚠️ 未找到RefreshToken')
+          }
           throw new Error('未找到RefreshToken')
         }
       } catch (refreshError: any) {
