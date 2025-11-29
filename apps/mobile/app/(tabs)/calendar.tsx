@@ -104,7 +104,6 @@ export default function CalendarScreen() {
   const lastScrollX = useRef(0)
   const scrollSyncTimeout = useRef<any>(null)
   const hasMountedRef = useRef(false)
-  const loadDataDebounceTimer = useRef<any>(null)
   const isLoadingData = useRef(false)
   const lastDataLoadTime = useRef<number>(0) // 记录上次数据加载时间
   
@@ -394,10 +393,13 @@ export default function CalendarScreen() {
         setIsRefreshing(true)
       }
       
-      // 如果需要清除缓存
+      // 如果需要清除缓存 - 必须在加载数据前完成
       if (clearCache) {
         console.log('📅 [Calendar] 清除缓存...')
         await dataService.cache.clearAll()
+        console.log('📅 [Calendar] 缓存清除完成')
+        // 等待一小段时间确保缓存清除生效
+        await new Promise(resolve => setTimeout(resolve, 100))
       }
       
       console.log('📅 [Calendar] 开始从API加载数据...')
@@ -476,77 +478,82 @@ export default function CalendarScreen() {
     }
   }, [startDate, dispatch])
   
-  // 刷新数据（清除缓存）
+  // 刷新数据（强制清除缓存）
   const handleRefresh = async () => {
-    console.log('🔄 [Calendar] 用户触发刷新，清除缓存')
+    console.log('🔄 [Calendar] 用户触发刷新，强制清除缓存')
+    // 先清除缓存并等待完成
+    await dataService.cache.clearAll()
+    console.log('🔄 [Calendar] 缓存清除完成，开始加载数据')
+    // 再加载数据（clearCache=true会再次清除，确保彻底）
     await loadDataFromAPI(false, true)
   }
   
-  // 页面获得焦点时刷新数据（总是从云端获取最新数据，但添加时间间隔限制）
+  // 页面获得焦点时刷新数据（简化版 - 直接从服务器获取）
   useFocusEffect(
     React.useCallback(() => {
       console.log('📅 [Calendar] 页面获得焦点')
       
-      // 检查是否刚刚从编辑页面返回（数据刚更新过）
-      AsyncStorage.getItem('@data_just_updated').then(timestamp => {
+      // 检查是否有强制刷新标记
+      AsyncStorage.getItem('@force_reload_calendar').then(async timestamp => {
         if (timestamp) {
-          const updateTime = parseInt(timestamp)
-          const now = Date.now()
-          const timeSinceUpdate = now - updateTime
+          console.log('🔄 [Calendar] 检测到强制刷新标记，立即从服务器加载最新数据')
           
-          if (timeSinceUpdate < 3000) {
-            console.log(`📅 [Calendar] 数据刚刚更新过（${Math.round(timeSinceUpdate/1000)}秒前），跳过加载，使用Redux数据`)
-            console.log(`📅 [Calendar] 当前Redux: ${reduxReservations.length}个预订, ${reduxRoomStatuses.length}个房态`)
-            
-            // 清除标记
-            AsyncStorage.removeItem('@data_just_updated')
+          // 清除标记
+          await AsyncStorage.removeItem('@force_reload_calendar')
+          
+          // 检查是否正在加载
+          if (isLoadingData.current) {
+            console.log('📅 [Calendar] 数据正在加载中，跳过本次请求')
             return
-          } else {
-            // 超过3秒，清除标记
-            AsyncStorage.removeItem('@data_just_updated')
           }
-        }
-        
-        // 检查距离上次加载是否太近（小于2秒）
-        const timeSinceLastLoad = Date.now() - lastDataLoadTime.current
-        
-        if (timeSinceLastLoad < 2000 && lastDataLoadTime.current > 0) {
-          console.log(`📅 [Calendar] 距离上次加载仅${Math.round(timeSinceLastLoad/1000)}秒，跳过本次刷新`)
+          
+          // 强制从服务器加载最新数据（先清除缓存）
+          console.log('📅 [Calendar] 强制清除缓存')
+          isLoadingData.current = true
+          lastDataLoadTime.current = Date.now()
+          
+          // 先清除缓存并等待完成
+          await dataService.cache.clearAll()
+          console.log('🧹 [Calendar] 缓存清除完成')
+          // 等待一小段时间确保缓存清除生效
+          await new Promise(resolve => setTimeout(resolve, 100))
+          console.log('📅 [Calendar] 开始加载数据')
+          
+          // 再加载数据
+          loadDataFromAPI(false, false).finally(() => {
+            isLoadingData.current = false
+            console.log('📅 [Calendar] 数据加载完成')
+          })
+          
           return
         }
         
-        // 清除之前的防抖定时器
-        if (loadDataDebounceTimer.current) {
-          clearTimeout(loadDataDebounceTimer.current)
-        }
-        
-        // 如果正在加载，跳过本次请求
+        // 没有强制刷新标记，正常的防重复加载逻辑
+        // 检查是否正在加载
         if (isLoadingData.current) {
           console.log('📅 [Calendar] 数据正在加载中，跳过本次请求')
           return
         }
         
-        // 防抖：500ms后才执行加载（给edit-order足够时间更新Redux）
-        loadDataDebounceTimer.current = setTimeout(() => {
-          console.log('📅 [Calendar] 防抖结束，开始加载最新数据（不使用缓存）')
-          isLoadingData.current = true
-          lastDataLoadTime.current = Date.now()
-          
-          // 总是清除缓存并从云端获取最新数据
-          loadDataFromAPI(false, true).finally(() => {
-            isLoadingData.current = false
-            console.log('📅 [Calendar] 数据加载完成')
-          })
-        }, 500)
+        // 检查距离上次加载是否太近（小于2秒）
+        const timeSinceLastLoad = Date.now() - lastDataLoadTime.current
+        if (timeSinceLastLoad < 2000 && lastDataLoadTime.current > 0) {
+          console.log(`📅 [Calendar] 距离上次加载仅${Math.round(timeSinceLastLoad/1000)}秒，跳过本次刷新`)
+          return
+        }
+        
+        // 正常加载数据
+        console.log('📅 [Calendar] 开始从服务器加载最新数据')
+        isLoadingData.current = true
+        lastDataLoadTime.current = Date.now()
+        
+        loadDataFromAPI(false, true).finally(() => {
+          isLoadingData.current = false
+          console.log('📅 [Calendar] 数据加载完成')
+        })
       })
       
-      // 清理函数
-      return () => {
-        if (loadDataDebounceTimer.current) {
-          clearTimeout(loadDataDebounceTimer.current)
-        }
-      }
-    }, [loadDataFromAPI, reduxReservations.length, reduxRoomStatuses.length])
+    }, [loadDataFromAPI])
   )
 
   // 回到今日

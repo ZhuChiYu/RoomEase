@@ -231,55 +231,12 @@ export default function EditOrderScreen() {
       console.log('  - 房间ID:', updatedReservation.roomId)
       console.log('🧹 [修改订单] 缓存已自动清除')
       
-      // 立即从服务器获取最新数据并更新Redux
-      console.log('🔄 [修改订单] ========== 开始重新加载所有数据 ==========')
+      // 不再在这里更新Redux，让 calendar 页面自己从服务器获取最新数据
+      console.log('💡 [修改订单] 不更新Redux，让Calendar页面从服务器获取最新数据')
       
-      // 计算日期范围（当前月份前后各30天）
-      const today = new Date()
-      const startDate = new Date(today)
-      startDate.setDate(today.getDate() - 30)
-      const endDate = new Date(today)
-      endDate.setDate(today.getDate() + 30)
-      
-      const formatDate = (date: Date) => {
-        const year = date.getFullYear()
-        const month = String(date.getMonth() + 1).padStart(2, '0')
-        const day = String(date.getDate()).padStart(2, '0')
-        return `${year}-${month}-${day}`
-      }
-      
-      // 强制从服务器获取最新数据（不使用缓存）
-      // dataService 内部的 update 方法已经清除了所有缓存
-      console.log('🌐 [修改订单] 正在请求最新的预订列表...')
-      console.log('🌐 [修改订单] 正在请求最新的房态数据...')
-      
-      const [updatedReservations, updatedRoomStatuses] = await Promise.all([
-        dataService.reservations.getAll(),
-        dataService.roomStatus.getByDateRange(formatDate(startDate), formatDate(endDate))
-      ])
-      
-      console.log('📦 [修改订单] ========== 从服务器获取到的最新数据 ==========')
-      console.log('📦 [修改订单] 总预订数:', updatedReservations.length)
-      console.log('📦 [修改订单] 总房态数:', updatedRoomStatuses.length)
-      
-      // 查找刚才修改的预订
-      const thisReservation = updatedReservations.find((r: any) => r.id === reservationId)
-      if (thisReservation) {
-        console.log('✅ [修改订单] 找到刚修改的预订，验证数据:')
-        console.log('  - ID:', thisReservation.id)
-        console.log('  - 客人姓名:', thisReservation.guestName)
-        console.log('  - 入住日期:', thisReservation.checkInDate)
-        console.log('  - 退房日期:', thisReservation.checkOutDate)
-        console.log('  - 房间ID:', thisReservation.roomId)
-        console.log('  - 渠道:', thisReservation.source)
-      } else {
-        console.error('❌ [修改订单] 警告：在新数据中找不到刚修改的预订！ID:', reservationId)
-      }
-      
-      // 更新Redux，确保返回日历页面时数据是最新的
-      console.log('🔄 [修改订单] 正在更新Redux...')
-      dispatch(setReservations(updatedReservations))
-      dispatch(setRoomStatuses(updatedRoomStatuses))
+      // 设置标记告诉calendar页面需要强制刷新
+      await AsyncStorage.setItem('@force_reload_calendar', Date.now().toString())
+      console.log('🔄 [修改订单] 已设置强制刷新标记')
       
       // 添加操作日志
       const operationLog = {
@@ -299,13 +256,8 @@ export default function EditOrderScreen() {
       dispatch(addOperationLog(operationLog))
       console.log('📝 [修改订单] 已添加操作日志:', operationLog)
       
-      console.log('✅ [修改订单] ========== Redux已更新完成 ==========')
-      console.log('✅ [修改订单] Redux中的预订数量:', updatedReservations.length)
+      console.log('✅ [修改订单] ========== 数据准备完成 ==========')
       console.log('⏰ [修改订单] 数据更新时间戳:', Date.now())
-      
-      // 设置一个标记到localStorage，告诉calendar页面数据刚刚更新过
-      await AsyncStorage.setItem('@data_just_updated', Date.now().toString())
-      console.log('💡 [修改订单] 已设置数据更新标记，Calendar页面将跳过加载')
       
       // 关闭loading
       setIsLoading(false)
@@ -321,7 +273,7 @@ export default function EditOrderScreen() {
               text: '确定',
               onPress: () => {
                 console.log('🔙 [修改订单] ========== 用户点击确定，准备返回 ==========')
-                console.log('🔙 [修改订单] 此时Redux中的数据应该已经是最新的')
+                console.log('🔙 [修改订单] Calendar页面将从服务器获取最新数据')
                 router.back()
               }
             }

@@ -79,10 +79,22 @@ const cache = {
 
   // 清除所有缓存
   clearAll: async (): Promise<void> => {
-    await Promise.all(
-      Object.values(CACHE_KEYS).map(key => storage.removeItem(key))
+    // 需要清除所有可能的缓存键，包括带参数的
+    // AsyncStorage 没有通配符删除，所以我们需要列出所有键
+    const allKeys = await storage.getAllKeys()
+    const cacheKeys = allKeys.filter(key => 
+      key.startsWith('cache_rooms') || 
+      key.startsWith('cache_reservations') || 
+      key.startsWith('cache_room_status') || 
+      key.startsWith('cache_statistics')
     )
-    console.log('📦 [Cache] 已清除所有缓存')
+    
+    if (cacheKeys.length > 0) {
+      await Promise.all(cacheKeys.map(key => storage.removeItem(key)))
+      console.log(`📦 [Cache] 已清除所有缓存 (${cacheKeys.length} 个键)`)
+    } else {
+      console.log('📦 [Cache] 没有缓存需要清除')
+    }
   },
 }
 

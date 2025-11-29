@@ -13,10 +13,11 @@ import {
   KeyboardAvoidingView,
   ActivityIndicator,
 } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useRouter, useLocalSearchParams } from 'expo-router'
 import { DateWheelPicker } from './components/DateWheelPicker'
 import { useAppDispatch, useAppSelector } from './store/hooks'
-import { addReservation } from './store/calendarSlice'
+import { setReservations, setRoomStatuses } from './store/calendarSlice'
 import type { Reservation } from './store/types'
 import { dataService } from './services'
 import { FEATURE_FLAGS } from './config/environment'
@@ -345,9 +346,18 @@ export default function CreateOrderScreen() {
         }
         console.log('✅ [CreateOrder] 预订创建成功:', reservation.id)
         
-        // 更新Redux状态（使用本地格式的完整对象）
-        dispatch(addReservation(reservation))
+        // 不再使用手动构造的对象，而是在所有预订创建完成后统一从服务器获取最新数据
       }
+      
+      console.log('✅ [CreateOrder] 所有预订创建完成')
+      
+      // 不再在这里更新Redux，让 calendar 页面自己从服务器获取最新数据
+      console.log('💡 [CreateOrder] 不更新Redux，让Calendar页面从服务器获取最新数据')
+      
+      // 设置标记告诉calendar页面需要强制刷新
+      await AsyncStorage.setItem('@force_reload_calendar', Date.now().toString())
+      console.log('🔄 [CreateOrder] 已设置强制刷新标记')
+      
     } catch (error: any) {
       console.error('❌ [CreateOrder] 创建预订失败:', error)
       setIsSubmitting(false) // 隐藏loading
