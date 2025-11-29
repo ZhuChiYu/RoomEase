@@ -39,7 +39,35 @@ class APILogger {
   }
 }
 
-const logger = new APILogger()
+const logger: APILogger = new APILogger()
+
+// 辅助函数：安全地调用logger
+const safeLog = (message: string, data?: any) => {
+  try {
+    logger.log(message, data)
+  } catch (e) {
+    console.log(message, data)
+  }
+}
+
+// Token刷新状态管理
+let isRefreshing = false
+let failedQueue: Array<{
+  resolve: (value?: any) => void
+  reject: (reason?: any) => void
+}> = []
+
+// 处理队列中的请求
+const processQueue = (error: any = null, token: string | null = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error)
+    } else {
+      prom.resolve(token)
+    }
+  })
+  failedQueue = []
+}
 
 // API Base URL - 从环境配置读取（初始值，会在运行时更新）
 let API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || API_CONFIG.BASE_URL
@@ -149,7 +177,7 @@ apiClient.interceptors.response.use(
     
     return response
   },
-  async (error: AxiosError) => {
+  async (error: AxiosError): Promise<any> => {
     const duration = new Date().getTime() - (error.config?.metadata?.startTime || 0)
     const originalRequest = error.config
     
@@ -180,17 +208,33 @@ apiClient.interceptors.response.use(
 
     // 处理401错误 - Token过期或无效
     if (error.response?.status === 401 && originalRequest && !(originalRequest as any)._retry) {
-      logger.log('🔄 检测到401错误，尝试刷新Token...')
+      // 如果正在刷新token，将请求加入队列
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject })
+        }).then(token => {
+          if (originalRequest.headers) {
+            originalRequest.headers.Authorization = `Bearer ${token}`
+          }
+          return apiClient(originalRequest)
+        }).catch(err => {
+          return Promise.reject(err)
+        })
+      }
+
+      // 开始刷新token流程
+      safeLog('🔄 检测到401错误，尝试刷新Token...')
       
       // 标记该请求已重试，避免无限循环
       (originalRequest as any)._retry = true
+      isRefreshing = true
       
       try {
         // 尝试使用refreshToken获取新的accessToken
         const refreshToken = await AsyncStorage.getItem('@refresh_token')
         
         if (refreshToken) {
-          logger.log('📤 正在使用RefreshToken刷新...')
+          (logger as APILogger).log('📤 正在使用RefreshToken刷新...')
           
           // 调用刷新接口
           const refreshResponse = await axios.post(
@@ -210,21 +254,30 @@ apiClient.interceptors.response.use(
               await AsyncStorage.setItem('@refresh_token', newRefreshToken)
             }
             
-            logger.success('✅ Token刷新成功，重试原请求')
+            safeLog('✅ Token刷新成功，重试原请求')
             
             // 更新原请求的Authorization header
             if (originalRequest.headers) {
               originalRequest.headers.Authorization = `Bearer ${accessToken}`
             }
             
+            // 处理队列中的所有请求
+            processQueue(null, accessToken)
+            isRefreshing = false
+            
             // 重试原请求
             return apiClient(originalRequest)
           }
         } else {
-          logger.log('⚠️ 未找到RefreshToken')
+          safeLog('⚠️ 未找到RefreshToken')
+          throw new Error('未找到RefreshToken')
         }
       } catch (refreshError: any) {
         logger.error('❌ Token刷新失败', refreshError)
+        
+        // 处理队列中的所有请求，全部拒绝
+        processQueue(refreshError, null)
+        isRefreshing = false
         
         // 刷新失败，清除所有认证信息
         await AsyncStorage.removeItem('@auth_token')
