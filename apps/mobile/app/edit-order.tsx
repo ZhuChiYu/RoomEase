@@ -11,12 +11,14 @@ import {
   Platform,
   StatusBar,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useRouter, useLocalSearchParams } from 'expo-router'
 import { DateWheelPicker } from './components/DateWheelPicker'
 import { useAppDispatch, useAppSelector } from './store/hooks'
 import { dataService } from './services/dataService'
-import { setReservations, setRoomStatuses } from './store/calendarSlice'
+import { setReservations, setRoomStatuses, addOperationLog } from './store/calendarSlice'
 
 export default function EditOrderScreen() {
   const router = useRouter()
@@ -58,6 +60,7 @@ export default function EditOrderScreen() {
   const [roomModalVisible, setRoomModalVisible] = useState(false)
   const [priceModalVisible, setPriceModalVisible] = useState(false)
   const [editingPrice, setEditingPrice] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
 
   // 计算入住时长（天数）
   const calculateNights = () => {
@@ -74,8 +77,49 @@ export default function EditOrderScreen() {
   // 渠道选项
   const channels = ['自来客', '携程', '美团', '飞猪', '去哪儿', 'Booking', '小猪', '途家', '蚂蚁短租', '同程旅行', '电话预订', '其他']
   
-  // 从Redux获取真实房间列表，格式化为 "房间名 - 房型"
-  const rooms = reduxRooms.map(room => `${room.type}-${room.name}`)
+  // 从Redux获取真实房间列表，按房型分组显示
+  const roomsByType = reduxRooms.reduce((acc, room) => {
+    if (!acc[room.type]) {
+      acc[room.type] = []
+    }
+    acc[room.type].push(room)
+    return acc
+  }, {} as Record<string, typeof reduxRooms>)
+  
+  // 生成房间显示文本（房型 - 房间号）
+  const getRoomDisplayText = (room: typeof reduxRooms[0]) => {
+    return `${room.type} - ${room.name}号房间`
+  }
+  
+  // 根据formData.roomType查找对应的房间
+  const getCurrentRoom = () => {
+    if (!formData.roomType) return null
+    // formData.roomType 格式可能是 "房型-房间名" 或 "房型 - 房间号房间"
+    const parts = formData.roomType.includes(' - ') 
+      ? formData.roomType.split(' - ')
+      : formData.roomType.split('-')
+    
+    const type = parts[0]
+    const name = parts[1]?.replace('号房间', '')
+    
+    return reduxRooms.find(r => r.type === type && r.name === name)
+  }
+  
+  // 初始化完整的房间显示文本
+  useEffect(() => {
+    const roomId = params.roomId as string
+    if (roomId && reduxRooms.length > 0) {
+      const room = reduxRooms.find(r => r.id === roomId)
+      if (room) {
+        const displayText = getRoomDisplayText(room)
+        // 如果当前显示的不完整（没有房号），就更新
+        if (!formData.roomType.includes('号房间')) {
+          setFormData(prev => ({ ...prev, roomType: displayText }))
+          console.log('🏠 [修改订单] 初始化房间显示:', displayText)
+        }
+      }
+    }
+  }, [params.roomId, reduxRooms.length])
 
   // 处理日期选择
   const handleDateSelect = (date: string) => {
@@ -111,6 +155,8 @@ export default function EditOrderScreen() {
 
   // 保存修改
   const handleSaveOrder = async () => {
+    console.log('🔵 [修改订单] ========== 开始保存订单 ==========')
+    
     if (!formData.guestName.trim()) {
       Alert.alert('提示', '请输入客人姓名')
       return
@@ -120,31 +166,39 @@ export default function EditOrderScreen() {
       return
     }
     
+    // 显示loading
+    setIsLoading(true)
+    
     try {
       const reservationId = params.reservationId as string
       
       if (!reservationId) {
         Alert.alert('错误', '无法获取预订ID')
+        setIsLoading(false)
         return
       }
       
-      console.log('🔄 [修改订单] 开始更新预订:', reservationId)
+      console.log('📋 [修改订单] 预订ID:', reservationId)
+      console.log('📋 [修改订单] 当前表单数据:', JSON.stringify(formData, null, 2))
       
-      // 从 roomType (格式: "双床房-1234") 提取房间ID
+      // 从 roomType 提取房间ID
       let roomId = params.roomId as string
       
       // 如果选择了新房间，从房间列表查找
       if (formData.roomType) {
-        // formData.roomType 格式: "房型-房间名"
-        const [type, name] = formData.roomType.split('-')
-        const selectedRoom = reduxRooms.find(r => r.type === type && r.name === name)
-        if (selectedRoom) {
-          roomId = selectedRoom.id
-          console.log('✅ [修改订单] 找到新房间:', { roomId, name: selectedRoom.name, type: selectedRoom.type })
+        const currentRoom = getCurrentRoom()
+        if (currentRoom) {
+          roomId = currentRoom.id
+          console.log('✅ [修改订单] 找到新房间:', { 
+            roomId, 
+            name: currentRoom.name, 
+            type: currentRoom.type,
+            displayText: getRoomDisplayText(currentRoom)
+          })
         }
       }
       
-      // 构造更新数据
+      // 构造更新数据 - 使用后端期望的字段名
       const updateData: any = {
         guestName: formData.guestName,
         guestPhone: formData.guestPhone,
@@ -154,62 +208,138 @@ export default function EditOrderScreen() {
         roomRate: formData.roomPrice,
         totalAmount: formData.roomPrice * nights,
         guestCount: formData.guestCount,
+        roomId: roomId, // 总是包含 roomId
       }
       
-      // 如果房间发生变化，添加 roomId
-      if (roomId) {
-        updateData.roomId = roomId
-      }
+      console.log('📤 [修改订单] 准备发送到服务器的数据:', JSON.stringify(updateData, null, 2))
+      console.log('🌐 [修改订单] ========== 开始发送请求到服务器 ==========')
       
-      console.log('📤 [修改订单] 更新数据:', updateData)
+      // 直接向服务器发送更新请求
+      console.log('🌐 [修改订单] 调用 dataService.reservations.update...')
+      console.log('🌐 [修改订单] 参数 - ID:', reservationId)
+      console.log('🌐 [修改订单] 参数 - 数据:', updateData)
       
-      // 调用API更新预订（dataService 内部会自动清除缓存）
-      await dataService.reservations.update(reservationId, updateData)
+      const updatedReservation = await dataService.reservations.update(reservationId, updateData)
       
-      console.log('✅ [修改订单] 更新成功，立即刷新数据...')
+      console.log('✅ [修改订单] ========== 服务器返回成功 ==========')
+      console.log('✅ [修改订单] 返回的完整预订数据:', JSON.stringify(updatedReservation, null, 2))
+      console.log('✅ [修改订单] 验证关键字段:')
+      console.log('  - ID:', updatedReservation.id)
+      console.log('  - 客人姓名:', updatedReservation.guestName)
+      console.log('  - 入住日期:', updatedReservation.checkInDate)
+      console.log('  - 退房日期:', updatedReservation.checkOutDate)
+      console.log('  - 房间ID:', updatedReservation.roomId)
+      console.log('🧹 [修改订单] 缓存已自动清除')
       
-      // 立即重新加载最新数据，确保返回房态日历时能立刻看到更新
+      // 立即从服务器获取最新数据并更新Redux
+      console.log('🔄 [修改订单] ========== 开始重新加载所有数据 ==========')
+      
+      // 计算日期范围（当前月份前后各30天）
       const today = new Date()
       const startDate = new Date(today)
       startDate.setDate(today.getDate() - 30)
       const endDate = new Date(today)
       endDate.setDate(today.getDate() + 30)
       
-      const startDateStr = startDate.toISOString().split('T')[0]
-      const endDateStr = endDate.toISOString().split('T')[0]
+      const formatDate = (date: Date) => {
+        const year = date.getFullYear()
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const day = String(date.getDate()).padStart(2, '0')
+        return `${year}-${month}-${day}`
+      }
       
-      // 并行加载所有数据
+      // 强制从服务器获取最新数据（不使用缓存）
+      // dataService 内部的 update 方法已经清除了所有缓存
+      console.log('🌐 [修改订单] 正在请求最新的预订列表...')
+      console.log('🌐 [修改订单] 正在请求最新的房态数据...')
+      
       const [updatedReservations, updatedRoomStatuses] = await Promise.all([
-        dataService.reservations.getAll({
-          startDate: startDateStr,
-          endDate: endDateStr,
-        }),
-        dataService.roomStatus.getByDateRange(startDateStr, endDateStr)
+        dataService.reservations.getAll(),
+        dataService.roomStatus.getByDateRange(formatDate(startDate), formatDate(endDate))
       ])
       
-      // 立即更新Redux，确保房态日历能立刻显示最新数据
+      console.log('📦 [修改订单] ========== 从服务器获取到的最新数据 ==========')
+      console.log('📦 [修改订单] 总预订数:', updatedReservations.length)
+      console.log('📦 [修改订单] 总房态数:', updatedRoomStatuses.length)
+      
+      // 查找刚才修改的预订
+      const thisReservation = updatedReservations.find((r: any) => r.id === reservationId)
+      if (thisReservation) {
+        console.log('✅ [修改订单] 找到刚修改的预订，验证数据:')
+        console.log('  - ID:', thisReservation.id)
+        console.log('  - 客人姓名:', thisReservation.guestName)
+        console.log('  - 入住日期:', thisReservation.checkInDate)
+        console.log('  - 退房日期:', thisReservation.checkOutDate)
+        console.log('  - 房间ID:', thisReservation.roomId)
+        console.log('  - 渠道:', thisReservation.source)
+      } else {
+        console.error('❌ [修改订单] 警告：在新数据中找不到刚修改的预订！ID:', reservationId)
+      }
+      
+      // 更新Redux，确保返回日历页面时数据是最新的
+      console.log('🔄 [修改订单] 正在更新Redux...')
       dispatch(setReservations(updatedReservations))
-      dispatch(setRoomStatuses(Array.isArray(updatedRoomStatuses) ? updatedRoomStatuses : []))
+      dispatch(setRoomStatuses(updatedRoomStatuses))
       
-      console.log('🔄 [修改订单] Redux数据已更新:', {
-        预订数: updatedReservations.length,
-        房态数: Array.isArray(updatedRoomStatuses) ? updatedRoomStatuses.length : 0
-      })
+      // 添加操作日志
+      const operationLog = {
+        id: `log_${Date.now()}`,
+        orderId: reservationId,
+        action: '修改订单',
+        operator: '用户',
+        time: new Date().toLocaleString('zh-CN', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        details: `修改了订单信息：${formData.guestName} / ${formData.roomType} / ${formData.checkInDate}至${formData.checkOutDate}`,
+      }
+      dispatch(addOperationLog(operationLog))
+      console.log('📝 [修改订单] 已添加操作日志:', operationLog)
       
-      Alert.alert(
-        '保存成功',
-        '订单已更新',
-        [
-          {
-            text: '确定',
-            onPress: () => router.back()
-          }
-        ]
-      )
+      console.log('✅ [修改订单] ========== Redux已更新完成 ==========')
+      console.log('✅ [修改订单] Redux中的预订数量:', updatedReservations.length)
+      console.log('⏰ [修改订单] 数据更新时间戳:', Date.now())
+      
+      // 设置一个标记到localStorage，告诉calendar页面数据刚刚更新过
+      await AsyncStorage.setItem('@data_just_updated', Date.now().toString())
+      console.log('💡 [修改订单] 已设置数据更新标记，Calendar页面将跳过加载')
+      
+      // 关闭loading
+      setIsLoading(false)
+      console.log('⏹️ [修改订单] Loading已关闭')
+      
+      // 延迟一点显示Alert，确保loading完全消失
+      setTimeout(() => {
+        Alert.alert(
+          '保存成功',
+          '订单已更新',
+          [
+            {
+              text: '确定',
+              onPress: () => {
+                console.log('🔙 [修改订单] ========== 用户点击确定，准备返回 ==========')
+                console.log('🔙 [修改订单] 此时Redux中的数据应该已经是最新的')
+                router.back()
+              }
+            }
+          ]
+        )
+      }, 100)
     } catch (error) {
-      console.error('❌ [修改订单] 更新失败:', error)
+      console.error('❌ [修改订单] ========== 修改失败 ==========')
+      console.error('❌ [修改订单] 错误详情:', error)
+      console.error('❌ [修改订单] 错误消息:', (error as Error).message)
+      console.error('❌ [修改订单] 错误堆栈:', (error as Error).stack)
+      
+      // 隐藏loading并显示错误
+      setIsLoading(false)
       Alert.alert('错误', '保存失败：' + (error as Error).message)
     }
+    
+    console.log('🔵 [修改订单] ========== 保存流程结束 ==========')
   }
 
   return (
@@ -399,23 +529,33 @@ export default function EditOrderScreen() {
         >
           <View style={styles.modalSheet}>
             <Text style={styles.modalTitle}>选择房间</Text>
-            {rooms.map(room => (
-              <TouchableOpacity
-                key={room}
-                style={styles.modalOption}
-                onPress={() => {
-                  setFormData(prev => ({ ...prev, roomType: room }))
-                  setRoomModalVisible(false)
-                }}
-              >
-                <Text style={[
-                  styles.modalOptionText,
-                  formData.roomType === room && styles.modalOptionSelected
-                ]}>
-                  {room}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            <ScrollView style={{ maxHeight: 400 }}>
+              {Object.entries(roomsByType).map(([roomType, roomsInType]) => (
+                <View key={roomType}>
+                  <Text style={styles.roomTypeHeader}>{roomType}</Text>
+                  {roomsInType.map(room => {
+                    const displayText = getRoomDisplayText(room)
+                    return (
+                      <TouchableOpacity
+                        key={room.id}
+                        style={styles.modalOption}
+                        onPress={() => {
+                          setFormData(prev => ({ ...prev, roomType: displayText }))
+                          setRoomModalVisible(false)
+                        }}
+                      >
+                        <Text style={[
+                          styles.modalOptionText,
+                          formData.roomType === displayText && styles.modalOptionSelected
+                        ]}>
+                          {displayText}
+                        </Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
+              ))}
+            </ScrollView>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -482,6 +622,16 @@ export default function EditOrderScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      
+      {/* Loading 遮罩层 */}
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#4a90e2" />
+            <Text style={styles.loadingText}>正在保存...</Text>
+          </View>
+        </View>
+      )}
     </View>
   )
 }
@@ -641,6 +791,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f8f8f8',
   },
+  roomTypeHeader: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: '#f5f5f5',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
   modalOptionText: {
     fontSize: 15,
     color: '#333',
@@ -724,5 +882,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
     marginVertical: 12,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  loadingContainer: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
   },
 })
