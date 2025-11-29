@@ -4,6 +4,7 @@ import { AuthService } from './auth.service'
 import { LoginDto, LoginResponseDto } from './dto/login.dto'
 import { RegisterDto } from './dto/register.dto'
 import { RefreshTokenDto } from './dto/refresh-token.dto'
+import { ChangePasswordDto } from './dto/change-password.dto'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
 
 @ApiTags('auth')
@@ -63,5 +64,20 @@ export class AuthController {
   async logout() {
     // 在实际应用中，可以将令牌加入黑名单
     return { message: '登出成功' }
+  }
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '修改密码' })
+  @ApiResponse({ status: 200, description: '密码修改成功' })
+  @ApiResponse({ status: 401, description: '当前密码错误' })
+  async changePassword(@Request() req: any, @Body() changePasswordDto: ChangePasswordDto) {
+    return this.authService.changePassword(
+      req.user.id,
+      req.user.tenantId,
+      changePasswordDto.oldPassword,
+      changePasswordDto.newPassword
+    )
   }
 }

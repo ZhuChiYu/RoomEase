@@ -469,6 +469,13 @@ export const api = {
       const response = await apiClient.post('/auth/refresh', { refreshToken })
       return response.data
     },
+    changePassword: async (oldPassword: string, newPassword: string) => {
+      const response = await apiClient.post('/auth/change-password', {
+        oldPassword,
+        newPassword,
+      })
+      return response.data
+    },
   },
 
   // 房间相关

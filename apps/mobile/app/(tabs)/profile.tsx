@@ -190,7 +190,7 @@ export default function ProfileScreen() {
     setPasswordModalVisible(true)
   }
 
-  const savePasswordChange = () => {
+  const savePasswordChange = async () => {
     if (!passwordData.oldPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
       Alert.alert('错误', '请填写所有密码字段')
       return
@@ -206,9 +206,43 @@ export default function ProfileScreen() {
       return
     }
 
-    setPasswordModalVisible(false)
-    setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' })
-    Alert.alert('成功', '密码已更新')
+    // 新密码不能与旧密码相同
+    if (passwordData.oldPassword === passwordData.newPassword) {
+      Alert.alert('错误', '新密码不能与当前密码相同')
+      return
+    }
+
+    setIsLoading(true)
+
+    try {
+      // 调用API修改密码
+      const response = await dataService.api.auth.changePassword(
+        passwordData.oldPassword,
+        passwordData.newPassword
+      )
+
+      setPasswordModalVisible(false)
+      setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' })
+      
+      Alert.alert('成功', '密码修改成功，请使用新密码登录', [
+        {
+          text: '确定',
+          onPress: async () => {
+            // 修改密码成功后，自动登出，让用户使用新密码重新登录
+            await logout()
+          }
+        }
+      ])
+    } catch (error: any) {
+      console.error('修改密码失败:', error)
+      
+      // 从error.message获取中文错误信息
+      const errorMessage = error.message || error.response?.data?.message || '修改密码失败，请重试'
+      
+      Alert.alert('失败', errorMessage)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleSettingChange = (key: keyof typeof settings, value: boolean) => {

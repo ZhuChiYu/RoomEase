@@ -207,6 +207,40 @@ export class AuthService {
   }
 
   /**
+   * 修改密码
+   */
+  async changePassword(userId: string, tenantId: string, oldPassword: string, newPassword: string) {
+    // 查找用户
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId, tenantId },
+    })
+
+    if (!user || !user.password) {
+      throw new UnauthorizedException('用户不存在')
+    }
+
+    // 验证当前密码
+    const isPasswordValid = await bcrypt.compare(oldPassword, user.password)
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('当前密码错误')
+    }
+
+    // 加密新密码
+    const hashedPassword = await bcrypt.hash(newPassword, 10)
+
+    // 更新密码
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: hashedPassword,
+        passwordResetAt: new Date(),
+      },
+    })
+
+    return { message: '密码修改成功' }
+  }
+
+  /**
    * 验证用户
    */
   async validateUser(userId: string, tenantId: string) {
