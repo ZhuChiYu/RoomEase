@@ -18,6 +18,7 @@ import { useAppSelector, useAppDispatch } from '../store/hooks'
 import { authStorage } from '../services/storage'
 import { dataService } from '../services/dataService'
 import { setRooms, setReservations, setRoomStatuses } from '../store/calendarSlice'
+import { FontSizes, Spacings, ComponentSizes } from '../utils/responsive'
 
 const { width } = Dimensions.get('window')
 
@@ -949,30 +950,30 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    padding: 20,
+    padding: Spacings.lg,
     backgroundColor: '#6366f1',
   },
   greeting: {
-    fontSize: 24,
+    fontSize: FontSizes.xlarge,
     fontWeight: 'bold',
     color: 'white',
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: FontSizes.medium,
     color: 'rgba(255, 255, 255, 0.8)',
   },
   kpiContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingHorizontal: Spacings.lg,
+    paddingTop: Spacings.lg,
   },
   kpiWrapper: {
-    marginBottom: 12,
+    marginBottom: Spacings.md,
   },
   kpiCard: {
     backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: ComponentSizes.borderRadiusLarge,
+    padding: Spacings.lg,
     borderLeftWidth: 4,
     shadowColor: '#000',
     shadowOffset: {
@@ -987,43 +988,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: Spacings.sm,
   },
   kpiTitle: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#64748b',
     fontWeight: '500',
   },
   trend: {
-    fontSize: 12,
+    fontSize: FontSizes.small,
     fontWeight: '600',
   },
   kpiValue: {
-    fontSize: 24,
+    fontSize: FontSizes.xlarge,
     fontWeight: 'bold',
     color: '#1e293b',
     marginBottom: 4,
   },
   kpiDescription: {
-    fontSize: 12,
+    fontSize: FontSizes.small,
     color: '#64748b',
   },
   section: {
-    padding: 20,
+    padding: Spacings.lg,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: Spacings.lg,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: FontSizes.large,
     fontWeight: 'bold',
     color: '#1e293b',
   },
   seeAllText: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#6366f1',
     fontWeight: '600',
   },
@@ -1035,10 +1036,12 @@ const styles = StyleSheet.create({
   actionButton: {
     width: (width - 60) / 2,
     backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: ComponentSizes.borderRadiusLarge,
+    padding: Spacings.lg,
     alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'center',
+    minHeight: 80,
+    marginBottom: Spacings.md,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -1049,30 +1052,31 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   actionText: {
-    fontSize: 16,
+    fontSize: FontSizes.medium,
     fontWeight: '600',
     color: '#6366f1',
+    textAlign: 'center',
   },
   reservationList: {
     backgroundColor: 'white',
-    borderRadius: 12,
+    borderRadius: ComponentSizes.borderRadiusLarge,
     overflow: 'hidden',
   },
   emptyReservations: {
-    padding: 40,
+    padding: Spacings.xxxl,
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: ComponentSizes.borderRadiusLarge,
   },
   emptyText: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#999',
   },
   reservationItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    padding: Spacings.lg,
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
   },
@@ -1080,22 +1084,22 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   guestName: {
-    fontSize: 16,
+    fontSize: FontSizes.medium,
     fontWeight: '600',
     color: '#1e293b',
     marginBottom: 4,
   },
   roomInfo: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#64748b',
   },
   statusBadge: {
-    paddingHorizontal: 12,
+    paddingHorizontal: Spacings.md,
     paddingVertical: 6,
     borderRadius: 20,
   },
   statusText: {
-    fontSize: 12,
+    fontSize: FontSizes.small,
     fontWeight: '600',
   },
   modalOverlay: {
@@ -1106,38 +1110,41 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: 'white',
-    margin: 20,
-    borderRadius: 12,
-    padding: 24,
+    margin: Spacings.lg,
+    borderRadius: ComponentSizes.borderRadiusLarge,
+    padding: Spacings.xl,
     width: '90%',
     maxHeight: '80%',
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: FontSizes.large,
     fontWeight: 'bold',
     color: '#1e293b',
-    marginBottom: 20,
+    marginBottom: Spacings.lg,
     textAlign: 'center',
   },
   modalInput: {
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    marginBottom: 12,
+    borderRadius: ComponentSizes.borderRadius,
+    padding: Spacings.md,
+    fontSize: FontSizes.medium,
+    marginBottom: Spacings.md,
+    minHeight: ComponentSizes.inputHeightSmall,
   },
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 20,
-    gap: 12,
+    marginTop: Spacings.lg,
+    gap: Spacings.md,
   },
   modalButton: {
     flex: 1,
-    padding: 12,
-    borderRadius: 8,
+    padding: Spacings.md,
+    borderRadius: ComponentSizes.borderRadius,
     alignItems: 'center',
+    minHeight: ComponentSizes.buttonHeightSmall,
+    justifyContent: 'center',
   },
   cancelButton: {
     backgroundColor: '#f1f5f9',
@@ -1148,22 +1155,26 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     color: '#64748b',
     fontWeight: '600',
+    fontSize: FontSizes.normal,
   },
   confirmButtonText: {
     color: 'white',
     fontWeight: '600',
+    fontSize: FontSizes.normal,
   },
   dateButton: {
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
+    borderRadius: ComponentSizes.borderRadius,
+    padding: Spacings.md,
+    marginBottom: Spacings.md,
     backgroundColor: '#f8fafc',
     alignItems: 'flex-start',
+    minHeight: ComponentSizes.inputHeightSmall,
+    justifyContent: 'center',
   },
   dateButtonText: {
-    fontSize: 16,
+    fontSize: FontSizes.medium,
     color: '#374151',
   },
 }) 
