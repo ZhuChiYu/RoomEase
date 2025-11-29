@@ -14,6 +14,8 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { FontSizes, Spacings, ComponentSizes } from '../utils/responsive'
 import { useRouter, useFocusEffect } from 'expo-router'
 import { DateWheelPicker } from '../components/DateWheelPicker'
 import { useAppSelector, useAppDispatch } from '../store/hooks'
@@ -102,6 +104,9 @@ export default function CalendarScreen() {
   const lastScrollX = useRef(0)
   const scrollSyncTimeout = useRef<any>(null)
   const hasMountedRef = useRef(false)
+  const loadDataDebounceTimer = useRef<any>(null)
+  const isLoadingData = useRef(false)
+  const lastDataLoadTime = useRef<number>(0) // 记录上次数据加载时间
   
   // 从Redux获取数据
   const reduxRooms = useAppSelector(state => state.calendar.rooms)
@@ -477,21 +482,71 @@ export default function CalendarScreen() {
     await loadDataFromAPI(false, true)
   }
   
-  // 页面获得焦点时刷新数据（包括首次加载和从其他页面返回）
+  // 页面获得焦点时刷新数据（总是从云端获取最新数据，但添加时间间隔限制）
   useFocusEffect(
     React.useCallback(() => {
-      // 首次挂载时加载数据
-      if (!hasMountedRef.current) {
-        console.log('📅 [Calendar] 首次加载数据')
-        hasMountedRef.current = true
-        loadDataFromAPI(true, false) // 不清除缓存
-        return
-      }
+      console.log('📅 [Calendar] 页面获得焦点')
       
-      // 从其他页面返回时，清除缓存并重新加载
-      console.log('📅 [Calendar] 从其他页面返回，刷新数据')
-      loadDataFromAPI(false, true) // 清除缓存
-    }, [loadDataFromAPI])
+      // 检查是否刚刚从编辑页面返回（数据刚更新过）
+      AsyncStorage.getItem('@data_just_updated').then(timestamp => {
+        if (timestamp) {
+          const updateTime = parseInt(timestamp)
+          const now = Date.now()
+          const timeSinceUpdate = now - updateTime
+          
+          if (timeSinceUpdate < 3000) {
+            console.log(`📅 [Calendar] 数据刚刚更新过（${Math.round(timeSinceUpdate/1000)}秒前），跳过加载，使用Redux数据`)
+            console.log(`📅 [Calendar] 当前Redux: ${reduxReservations.length}个预订, ${reduxRoomStatuses.length}个房态`)
+            
+            // 清除标记
+            AsyncStorage.removeItem('@data_just_updated')
+            return
+          } else {
+            // 超过3秒，清除标记
+            AsyncStorage.removeItem('@data_just_updated')
+          }
+        }
+        
+        // 检查距离上次加载是否太近（小于2秒）
+        const timeSinceLastLoad = Date.now() - lastDataLoadTime.current
+        
+        if (timeSinceLastLoad < 2000 && lastDataLoadTime.current > 0) {
+          console.log(`📅 [Calendar] 距离上次加载仅${Math.round(timeSinceLastLoad/1000)}秒，跳过本次刷新`)
+          return
+        }
+        
+        // 清除之前的防抖定时器
+        if (loadDataDebounceTimer.current) {
+          clearTimeout(loadDataDebounceTimer.current)
+        }
+        
+        // 如果正在加载，跳过本次请求
+        if (isLoadingData.current) {
+          console.log('📅 [Calendar] 数据正在加载中，跳过本次请求')
+          return
+        }
+        
+        // 防抖：500ms后才执行加载（给edit-order足够时间更新Redux）
+        loadDataDebounceTimer.current = setTimeout(() => {
+          console.log('📅 [Calendar] 防抖结束，开始加载最新数据（不使用缓存）')
+          isLoadingData.current = true
+          lastDataLoadTime.current = Date.now()
+          
+          // 总是清除缓存并从云端获取最新数据
+          loadDataFromAPI(false, true).finally(() => {
+            isLoadingData.current = false
+            console.log('📅 [Calendar] 数据加载完成')
+          })
+        }, 500)
+      })
+      
+      // 清理函数
+      return () => {
+        if (loadDataDebounceTimer.current) {
+          clearTimeout(loadDataDebounceTimer.current)
+        }
+      }
+    }, [loadDataFromAPI, reduxReservations.length, reduxRoomStatuses.length])
   )
 
   // 回到今日
@@ -1041,13 +1096,13 @@ export default function CalendarScreen() {
                               >
                             {isOccupied && roomData && (
                               <View style={styles.reservationInfo}>
-                                <Text style={styles.reservationGuestName} numberOfLines={1}>
+                                <Text style={styles.reservationGuestName} numberOfLines={1} ellipsizeMode="tail">
                                   {roomData.guestName || '未知'}
                                 </Text>
-                                <Text style={styles.reservationChannel} numberOfLines={1}>
+                                <Text style={styles.reservationChannel} numberOfLines={1} ellipsizeMode="tail">
                                   {roomData.channel || roomData.source || '直订'}
                                 </Text>
-                                <Text style={styles.reservationPhone} numberOfLines={1}>
+                                <Text style={styles.reservationPhone} numberOfLines={1} ellipsizeMode="tail">
                                   {roomData.guestPhone || ''}
                                 </Text>
                               </View>
@@ -1233,7 +1288,7 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
+    padding: Spacings.md,
     backgroundColor: 'white',
     gap: 8,
   },
@@ -1243,34 +1298,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#f5f5f5',
     borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: Spacings.md,
+    paddingVertical: Spacings.sm,
   },
   searchIcon: {
-    fontSize: 16,
-    marginRight: 8,
+    fontSize: FontSizes.medium,
+    marginRight: Spacings.sm,
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#333',
   },
   clearIcon: {
-    fontSize: 16,
+    fontSize: FontSizes.medium,
     color: '#999',
-    paddingHorizontal: 4,
+    paddingHorizontal: Spacings.xs,
   },
   refreshBtn: {
-    padding: 8,
+    padding: Spacings.sm,
   },
   refreshIcon: {
-    fontSize: 20,
+    fontSize: FontSizes.xlarge,
   },
   filterBtn: {
-    padding: 8,
+    padding: Spacings.sm,
   },
   filterIcon: {
-    fontSize: 20,
+    fontSize: FontSizes.xlarge,
   },
   tableContainer: {
     flex: 1,
@@ -1295,7 +1350,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#d0d0d0',
   },
   todayLabel: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     fontWeight: 'bold',
     color: 'white',
   },
@@ -1316,8 +1371,8 @@ const styles = StyleSheet.create({
   dateCell: {
     width: CELL_WIDTH,
     height: 60,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingVertical: Spacings.md,
+    paddingHorizontal: Spacings.sm,
     justifyContent: 'center',
     alignItems: 'center',
     borderRightWidth: 1,
@@ -1327,17 +1382,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#e3f2fd',
   },
   dateText: {
-    fontSize: 12,
+    fontSize: FontSizes.small,
     color: '#333',
     fontWeight: '500',
-    marginBottom: 4,
+    marginBottom: Spacings.xs,
   },
   todayDateText: {
     color: '#1976d2',
     fontWeight: 'bold',
   },
   availableText: {
-    fontSize: 11,
+    fontSize: FontSizes.tiny,
     color: '#666',
   },
   todayAvailableText: {
@@ -1359,14 +1414,14 @@ const styles = StyleSheet.create({
     height: 32,
     backgroundColor: '#e0e0e0',
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: Spacings.sm,
     borderRightWidth: 1,
     borderRightColor: '#d0d0d0',
     borderBottomWidth: 1,
     borderBottomColor: '#d0d0d0',
   },
   roomTypeLabel: {
-    fontSize: 12,
+    fontSize: FontSizes.small,
     fontWeight: '600',
     color: '#333',
   },
@@ -1381,7 +1436,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
   },
   roomName: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     fontWeight: '600',
     color: '#333',
   },
@@ -1422,23 +1477,23 @@ const styles = StyleSheet.create({
   reservationInfo: {
     flex: 1,
     width: '100%',
-    paddingHorizontal: 4,
-    paddingVertical: 4,
+    paddingHorizontal: Spacings.xs,
+    paddingVertical: Spacings.xs,
     justifyContent: 'center',
   },
   reservationGuestName: {
-    fontSize: 12,
+    fontSize: FontSizes.small,
     fontWeight: '600',
     color: '#333',
     marginBottom: 2,
   },
   reservationChannel: {
-    fontSize: 10,
+    fontSize: FontSizes.tiny,
     color: '#666',
     marginBottom: 2,
   },
   reservationPhone: {
-    fontSize: 10,
+    fontSize: FontSizes.tiny,
     color: '#999',
   },
   checkmarkContainer: {
@@ -1447,7 +1502,7 @@ const styles = StyleSheet.create({
     right: 4,
   },
   checkmark: {
-    fontSize: 16,
+    fontSize: FontSizes.medium,
     color: '#4a90e2',
     fontWeight: 'bold',
   },
@@ -1456,7 +1511,7 @@ const styles = StyleSheet.create({
     bottom: 30, // 降低位置，更靠近底部
     alignSelf: 'center',
     backgroundColor: 'white',
-    paddingHorizontal: 24,
+    paddingHorizontal: Spacings.xxl,
     paddingVertical: 10,
     borderRadius: 20,
     shadowColor: '#000',
@@ -1466,7 +1521,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   todayButtonText: {
-    fontSize: 14,
+    fontSize: FontSizes.normal,
     color: '#4a90e2',
     fontWeight: '600',
   },
@@ -1474,9 +1529,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderTopWidth: 1,
     borderTopColor: '#e0e0e0',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    paddingBottom: 24,
+    paddingHorizontal: Spacings.md,
+    paddingVertical: Spacings.md,
+    paddingBottom: Spacings.xxl,
   },
   actionButtonsRow: {
     flexDirection: 'row',
@@ -1485,15 +1540,15 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: Spacings.md,
+    borderRadius: ComponentSizes.borderRadius,
     borderWidth: 1,
     borderColor: '#e0e0e0',
     alignItems: 'center',
     backgroundColor: 'white',
   },
   actionButtonText: {
-    fontSize: 13,
+    fontSize: FontSizes.small,
     color: '#333',
     fontWeight: '500',
   },
@@ -1510,7 +1565,7 @@ const styles = StyleSheet.create({
     top: '50%',
     marginTop: -20,
     width: 40,
-    height: 40,
+    minHeight: ComponentSizes.buttonHeightSmall,
     borderRadius: 20,
     backgroundColor: 'rgba(74, 144, 226, 0.9)',
     justifyContent: 'center',
@@ -1527,7 +1582,7 @@ const styles = StyleSheet.create({
     top: '50%',
     marginTop: -20,
     width: 40,
-    height: 40,
+    minHeight: ComponentSizes.buttonHeightSmall,
     borderRadius: 20,
     backgroundColor: 'rgba(74, 144, 226, 0.9)',
     justifyContent: 'center',
@@ -1539,7 +1594,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   arrowText: {
-    fontSize: 24,
+    fontSize: FontSizes.xxlarge,
     color: 'white',
     fontWeight: 'bold',
   },
@@ -1560,7 +1615,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   fabIcon: {
-    fontSize: 32,
+    fontSize: FontSizes.huge,
     color: 'white',
     fontWeight: '300',
   },
@@ -1578,31 +1633,31 @@ const styles = StyleSheet.create({
     maxHeight: '75%',
   },
   filterTitle: {
-    fontSize: 18,
+    fontSize: FontSizes.large,
     fontWeight: 'bold',
     color: '#333',
     textAlign: 'center',
-    paddingVertical: 16,
+    paddingVertical: Spacings.lg,
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
   filterOption: {
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    paddingVertical: Spacings.lg,
+    paddingHorizontal: Spacings.xl,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
   filterOptionText: {
-    fontSize: 16,
+    fontSize: FontSizes.medium,
     color: '#333',
   },
   filterCancelButton: {
-    marginTop: 8,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    marginTop: Spacings.sm,
+    paddingVertical: Spacings.lg,
+    paddingHorizontal: Spacings.xl,
   },
   filterCancelText: {
-    fontSize: 16,
+    fontSize: FontSizes.medium,
     color: '#999',
     textAlign: 'center',
   },
@@ -1619,8 +1674,8 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 24,
+    borderRadius: ComponentSizes.borderRadiusLarge,
+    padding: Spacings.xxl,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -1629,8 +1684,8 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 16,
+    marginTop: Spacings.md,
+    fontSize: FontSizes.medium,
     color: '#333',
   },
 })
