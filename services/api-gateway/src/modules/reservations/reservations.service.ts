@@ -152,30 +152,32 @@ export class ReservationsService {
    */
   async update(tenantId: string, id: string, updateReservationDto: UpdateReservationDto) {
     // 验证预订是否存在
-    await this.findOne(tenantId, id)
+    const existingReservation = await this.findOne(tenantId, id)
 
-    // 如果更新日期，需要验证
-    if (updateReservationDto.checkInDate || updateReservationDto.checkOutDate) {
-      const reservation = await this.prisma.reservation.findUnique({ where: { id } })
+    // 如果更新房间或日期，需要验证
+    if (updateReservationDto.checkInDate || updateReservationDto.checkOutDate || updateReservationDto.roomId) {
       const checkIn = updateReservationDto.checkInDate
         ? new Date(updateReservationDto.checkInDate)
-        : reservation!.checkInDate
+        : existingReservation.checkInDate
       const checkOut = updateReservationDto.checkOutDate
         ? new Date(updateReservationDto.checkOutDate)
-        : reservation!.checkOutDate
+        : existingReservation.checkOutDate
+      
+      // 要检查的房间ID：如果更新了房间ID就用新的，否则用原来的
+      const roomIdToCheck = updateReservationDto.roomId || existingReservation.roomId
 
       if (checkOut <= checkIn) {
         throw new BadRequestException('退房日期必须晚于入住日期')
       }
 
-      // 检查房间冲突
+      // 检查房间冲突（排除当前订单）
       const conflictingReservations = await this.prisma.reservation.findMany({
         where: {
-          roomId: reservation!.roomId,
+          roomId: roomIdToCheck,
           status: {
             in: ['PENDING', 'CONFIRMED', 'CHECKED_IN'],
           },
-          NOT: { id },
+          NOT: { id }, // 排除当前订单
           OR: [
             {
               checkInDate: { lt: checkOut },
