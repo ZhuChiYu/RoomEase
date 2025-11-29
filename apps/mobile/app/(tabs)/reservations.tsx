@@ -145,6 +145,10 @@ export default function ReservationsScreen() {
     checkOut: '',
     specialRequests: '',
   })
+  
+  // 防抖相关
+  const loadDataDebounceTimer = React.useRef<any>(null)
+  const isLoadingData = React.useRef(false)
 
   // 日期选择器状态
   const [datePickerVisible, setDatePickerVisible] = useState(false)
@@ -169,16 +173,10 @@ export default function ReservationsScreen() {
   const reduxReservations = useAppSelector(state => state.calendar.reservations)
   const rooms = useAppSelector(state => state.calendar.rooms)
   
-  // 加载数据
-  const loadData = useCallback(async () => {
-    // 如果已经有数据，跳过加载
-    if (reduxReservations.length > 0) {
-      console.log('📋 [预订管理] 数据已存在，跳过加载')
-      return
-    }
-    
+  // 加载数据（总是从服务器获取最新数据，不使用缓存）
+  const loadData = useCallback(async (forceRefresh = false) => {
     try {
-      console.log('📋 [预订管理] 开始加载数据...')
+      console.log('📋 [预订管理] 开始从服务器加载最新数据...')
       
       // 计算日期范围（今天往前30天，往后30天）
       const today = new Date()
@@ -190,7 +188,13 @@ export default function ReservationsScreen() {
       const startDateStr = startDate.toISOString().split('T')[0]
       const endDateStr = endDate.toISOString().split('T')[0]
       
-      // 并行加载数据
+      // 如果需要强制刷新，先清除缓存
+      if (forceRefresh) {
+        await dataService.cache.clearAll()
+        console.log('📋 [预订管理] 已清除所有缓存')
+      }
+      
+      // 并行加载数据（从服务器获取）
       const [roomsData, reservationsData, roomStatusesData] = await Promise.all([
         dataService.rooms.getAll(),
         dataService.reservations.getAll({
@@ -200,7 +204,7 @@ export default function ReservationsScreen() {
         dataService.roomStatus.getByDateRange(startDateStr, endDateStr)
       ])
       
-      console.log('📋 [预订管理] 数据加载完成:', {
+      console.log('📋 [预订管理] 服务器数据加载完成:', {
         rooms: roomsData.length,
         reservations: reservationsData.length,
       })
@@ -212,13 +216,42 @@ export default function ReservationsScreen() {
     } catch (error) {
       console.error('❌ [预订管理] 数据加载失败:', error)
     }
-  }, [reduxReservations.length, dispatch])
+  }, [dispatch])
   
-  // 页面获得焦点时加载数据
+  // 页面获得焦点时加载数据（总是从服务器获取最新数据，添加防抖）
   useFocusEffect(
     useCallback(() => {
       console.log('📋 [预订管理] 页面获得焦点')
-      loadData()
+      
+      // 清除之前的防抖定时器
+      if (loadDataDebounceTimer.current) {
+        clearTimeout(loadDataDebounceTimer.current)
+      }
+      
+      // 如果正在加载，跳过本次请求
+      if (isLoadingData.current) {
+        console.log('📋 [预订管理] 数据正在加载中，跳过本次请求')
+        return
+      }
+      
+      // 防抖：300ms后才执行加载
+      loadDataDebounceTimer.current = setTimeout(() => {
+        console.log('📋 [预订管理] 防抖结束，开始从服务器加载最新数据')
+        isLoadingData.current = true
+        
+        // 总是清除缓存并从服务器获取最新数据
+        loadData(true).finally(() => {
+          isLoadingData.current = false
+          console.log('📋 [预订管理] 数据加载完成')
+        })
+      }, 300)
+      
+      // 清理函数
+      return () => {
+        if (loadDataDebounceTimer.current) {
+          clearTimeout(loadDataDebounceTimer.current)
+        }
+      }
     }, [loadData])
   )
   
@@ -226,10 +259,8 @@ export default function ReservationsScreen() {
   const onRefresh = async () => {
     setRefreshing(true)
     try {
-      console.log('🔄 [预订管理] 下拉刷新，清除缓存...')
-      await dataService.cache.clearAll()
-      console.log('✅ [预订管理] 缓存已清除，重新加载数据...')
-      await loadData()
+      console.log('🔄 [预订管理] 用户下拉刷新，从服务器获取最新数据...')
+      await loadData(true) // 强制刷新
     } catch (error) {
       console.error('❌ [预订管理] 刷新失败:', error)
     } finally {
@@ -335,39 +366,7 @@ export default function ReservationsScreen() {
               // 调用 dataService 删除预订（会自动清除缓存）
               await dataService.reservations.delete(id)
               
-              console.log('✅ 删除成功，立即刷新数据...')
-              
-              // 立即重新加载最新数据
-              const today = new Date()
-              const startDate = new Date(today)
-              startDate.setDate(today.getDate() - 90)
-              const endDate = new Date(today)
-              endDate.setDate(today.getDate() + 30)
-              
-              const startDateStr = startDate.toISOString().split('T')[0]
-              const endDateStr = endDate.toISOString().split('T')[0]
-              
-              // 并行加载所有数据
-              const [roomsData, reservationsData, roomStatusesData] = await Promise.all([
-                dataService.rooms.getAll(),
-                dataService.reservations.getAll({
-                  startDate: startDateStr,
-                  endDate: endDateStr,
-                }),
-                dataService.roomStatus.getByDateRange(startDateStr, endDateStr)
-              ])
-              
-              // 立即更新Redux
-              dispatch(setRooms(roomsData))
-              dispatch(setReservations(reservationsData))
-              dispatch(setRoomStatuses(Array.isArray(roomStatusesData) ? roomStatusesData : []))
-              
-              console.log('🔄 Redux数据已更新:', {
-                房间数: roomsData.length,
-                预订数: reservationsData.length,
-                房态数: Array.isArray(roomStatusesData) ? roomStatusesData.length : 0
-              })
-              
+              console.log('✅ 删除成功')
               Alert.alert('成功', '预订已删除')
             } catch (error: any) {
               console.error('❌ 删除预订失败:', error)
