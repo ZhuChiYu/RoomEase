@@ -1,10 +1,11 @@
-import { Controller, Post, Body, Get, UseGuards, Request } from '@nestjs/common'
+import { Controller, Post, Body, Get, UseGuards, Request, Patch } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger'
 import { AuthService } from './auth.service'
 import { LoginDto, LoginResponseDto } from './dto/login.dto'
 import { RegisterDto } from './dto/register.dto'
 import { RefreshTokenDto } from './dto/refresh-token.dto'
 import { ChangePasswordDto } from './dto/change-password.dto'
+import { UpdateProfileDto } from './dto/update-profile.dto'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
 
 @ApiTags('auth')
@@ -78,6 +79,20 @@ export class AuthController {
       req.user.tenantId,
       changePasswordDto.oldPassword,
       changePasswordDto.newPassword
+    )
+  }
+
+  @Patch('profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '更新用户信息' })
+  @ApiResponse({ status: 200, description: '更新成功' })
+  @ApiResponse({ status: 401, description: '未授权' })
+  async updateProfile(@Request() req: any, @Body() updateProfileDto: UpdateProfileDto) {
+    return this.authService.updateProfile(
+      req.user.id,
+      req.user.tenantId,
+      updateProfileDto
     )
   }
 }

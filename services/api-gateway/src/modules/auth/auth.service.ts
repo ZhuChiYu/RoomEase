@@ -241,6 +241,54 @@ export class AuthService {
   }
 
   /**
+   * 更新用户信息
+   */
+  async updateProfile(userId: string, tenantId: string, updateData: {
+    name?: string
+    phone?: string
+    hotelName?: string
+    position?: string
+  }) {
+    // 查找用户
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId, tenantId },
+    })
+
+    if (!user) {
+      throw new UnauthorizedException('用户不存在')
+    }
+
+    // 更新用户信息
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(updateData.name && { name: updateData.name }),
+        ...(updateData.phone && { phone: updateData.phone }),
+        ...(updateData.hotelName && { hotelName: updateData.hotelName }),
+        ...(updateData.position && { position: updateData.position }),
+        updatedAt: new Date(),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        hotelName: true,
+        position: true,
+        role: true,
+        tenantId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
+
+    return {
+      message: '用户信息更新成功',
+      user: updatedUser,
+    }
+  }
+
+  /**
    * 验证用户
    */
   async validateUser(userId: string, tenantId: string) {

@@ -178,14 +178,50 @@ export default function ProfileScreen() {
       return
     }
 
-    const newUserInfo = {
-      ...userInfo,
-      [editField]: editValue
+    setIsLoading(true)
+
+    try {
+      // 准备要更新的数据
+      const updateData: any = {}
+      
+      // 根据字段类型映射到后端字段
+      if (editField === 'name') {
+        updateData.name = editValue
+      } else if (editField === 'phone') {
+        updateData.phone = editValue
+      } else if (editField === 'hotelName') {
+        updateData.hotelName = editValue
+      } else if (editField === 'position') {
+        updateData.position = editValue
+      } else if (editField === 'email') {
+        // 邮箱通常不允许修改，或需要特殊验证
+        Alert.alert('提示', '邮箱地址无法修改')
+        setIsLoading(false)
+        return
+      }
+
+      // 调用API更新用户信息
+      await api.auth.updateProfile(updateData)
+
+      // 更新本地状态
+      const newUserInfo = {
+        ...userInfo,
+        [editField]: editValue
+      }
+      setUserInfo(newUserInfo)
+      await saveUserInfo(newUserInfo)
+
+      // 刷新用户信息（从服务器获取最新数据）
+      await refreshUser()
+
+      setEditModalVisible(false)
+      Alert.alert('成功', '个人信息已更新并同步到服务器')
+    } catch (error: any) {
+      console.error('更新个人信息失败:', error)
+      Alert.alert('失败', error.message || '更新失败，请重试')
+    } finally {
+      setIsLoading(false)
     }
-    setUserInfo(newUserInfo)
-    await saveUserInfo(newUserInfo)
-    setEditModalVisible(false)
-    Alert.alert('成功', '个人信息已更新')
   }
 
   const handleChangePassword = () => {

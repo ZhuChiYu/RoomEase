@@ -528,6 +528,24 @@ export const api = {
       })
       return response.data
     },
+    // 更新用户信息
+    updateProfile: async (profileData: {
+      name?: string
+      phone?: string
+      hotelName?: string
+      position?: string
+    }) => {
+      const response = await apiClient.patch('/auth/profile', profileData)
+      
+      // 如果返回了更新后的用户信息，保存到本地
+      if (response.data?.user) {
+        const userInfo = response.data.user
+        await AsyncStorage.setItem('@user_info', JSON.stringify(userInfo))
+        logger.log('✅ 用户信息已更新并保存到本地')
+      }
+      
+      return response.data
+    },
   },
 
   // 房间相关
