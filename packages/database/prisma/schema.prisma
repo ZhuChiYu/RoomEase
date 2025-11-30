@@ -51,6 +51,10 @@ model User {
   wechatUnionId String? @unique
   wechatOpenId  String?
   
+  // 用户扩展信息
+  hotelName   String? // 民宿/酒店名称
+  position    String? // 职位
+  
   // 角色权限
   role        UserRole @default(FRONTDESK)
   permissions String[] // JSON array of permissions
