@@ -110,22 +110,22 @@ export const getFontScale = (): number => {
  * 使用这些常量可以保持整个应用的字体大小一致性
  */
 export const FontSizes = {
-  // 超小号（提示文字、标签）
-  tiny: scaleFontSize(10, 1.2),
-  // 小号（辅助文字、说明）
-  small: scaleFontSize(12, 1.2),
-  // 正常（正文内容）
-  normal: scaleFontSize(14, 1.3),
-  // 中等（小标题）
-  medium: scaleFontSize(16, 1.3),
-  // 大号（标题）
-  large: scaleFontSize(18, 1.3),
-  // 超大号（主标题）
-  xlarge: scaleFontSize(20, 1.2),
-  xxlarge: scaleFontSize(24, 1.2),
-  // 特大号（页面标题）
+  // 超小号（提示文字、标签）- 限制缩放
+  tiny: scaleFontSize(10, 1.15),
+  // 小号（辅助文字、说明）- 限制缩放
+  small: scaleFontSize(12, 1.15),
+  // 正常（正文内容）- 适中缩放
+  normal: scaleFontSize(14, 1.2),
+  // 中等（小标题）- 适中缩放
+  medium: scaleFontSize(16, 1.2),
+  // 大号（标题）- 适中缩放
+  large: scaleFontSize(18, 1.2),
+  // 超大号（主标题）- 限制缩放
+  xlarge: scaleFontSize(20, 1.15),
+  xxlarge: scaleFontSize(24, 1.15),
+  // 特大号（页面标题）- 限制缩放
   huge: scaleFontSize(32, 1.1),
-  // 超级大号（品牌/Logo）
+  // 超级大号（品牌/Logo）- 最小缩放
   giant: scaleFontSize(64, 1.05),
 }
 
@@ -192,4 +192,5 @@ export default {
   ComponentSizes,
   ScreenSizes,
 }
+
 

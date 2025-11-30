@@ -13,6 +13,7 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  PixelRatio,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { FontSizes, Spacings, ComponentSizes } from '../utils/responsive'
@@ -24,8 +25,61 @@ import { dataService } from '../services'
 import { setRooms, setReservations, setRoomStatuses } from '../store/calendarSlice'
 
 const { width } = Dimensions.get('window')
-const CELL_WIDTH = 100
-const TODAY_CELL_WIDTH = 80
+// 根据字体缩放动态调整单元格宽度
+const fontScale = PixelRatio.getFontScale()
+const CELL_WIDTH = Math.max(110, 95 * Math.min(fontScale, 1.3)) // 日期单元格宽度，减小以显示更多
+const ROOM_CELL_WIDTH = Math.max(75, 65 + (fontScale - 1) * 25) // 房间列宽度：基础75，更窄
+const CELL_HEIGHT = Math.max(65, 60 + (fontScale - 1) * 20) // 单元格高度动态调整
+
+// 为订单生成颜色（基于订单ID生成一致的颜色）
+const generateOrderColor = (reservationId: string): string => {
+  // 使用订单ID生成哈希值
+  let hash = 0
+  for (let i = 0; i < reservationId.length; i++) {
+    hash = reservationId.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  
+  // 预定义的柔和颜色方案
+  const colors = [
+    '#FFE5E5', // 浅红
+    '#E5F5FF', // 浅蓝
+    '#E5FFE5', // 浅绿
+    '#FFF5E5', // 浅橙
+    '#F5E5FF', // 浅紫
+    '#FFE5F5', // 浅粉
+    '#E5FFFF', // 浅青
+    '#FFFFE5', // 浅黄
+    '#F0E5FF', // 淡紫
+    '#E5FFF0', // 淡绿
+  ]
+  
+  const index = Math.abs(hash) % colors.length
+  return colors[index]
+}
+
+// 为订单生成左侧标记颜色（更鲜艳）
+const generateOrderBorderColor = (reservationId: string): string => {
+  let hash = 0
+  for (let i = 0; i < reservationId.length; i++) {
+    hash = reservationId.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  
+  const colors = [
+    '#FF6B6B', // 红
+    '#4ECDC4', // 青
+    '#45B7D1', // 蓝
+    '#FFA07A', // 橙
+    '#DDA0DD', // 紫
+    '#98D8C8', // 薄荷绿
+    '#F7DC6F', // 黄
+    '#BB8FCE', // 淡紫
+    '#85C1E2', // 天蓝
+    '#F8B88B', // 杏色
+  ]
+  
+  const index = Math.abs(hash) % colors.length
+  return colors[index]
+}
 
 type RoomType = '大床房' | '双人房' | '豪华房' | '套房'
 
@@ -256,7 +310,7 @@ export default function CalendarScreen() {
   const [datePickerVisible, setDatePickerVisible] = useState(false)
   const [selectedRoomTypes, setSelectedRoomTypes] = useState<Set<RoomType>>(new Set())
   // 初始滚动位置应该在今日（第7天的位置）
-  const initialScrollX = 7 * CELL_WIDTH - (width - TODAY_CELL_WIDTH) / 2 + CELL_WIDTH / 2
+  const initialScrollX = 7 * CELL_WIDTH - (width - ROOM_CELL_WIDTH) / 2 + CELL_WIDTH / 2
   
   const [scrollX, setScrollX] = useState(Math.max(0, initialScrollX))
   const [showLeftArrow, setShowLeftArrow] = useState(false)
@@ -320,7 +374,7 @@ export default function CalendarScreen() {
   // 滚动到居中位置
   const scrollToCenter = (index: number) => {
     if (dateHeaderScrollRef.current && contentScrollRef.current) {
-      const scrollX = index * CELL_WIDTH - (width - TODAY_CELL_WIDTH) / 2 + CELL_WIDTH / 2
+      const scrollX = index * CELL_WIDTH - (width - ROOM_CELL_WIDTH) / 2 + CELL_WIDTH / 2
       const targetScrollX = Math.max(0, scrollX)
       
       isScrollingProgrammatically.current = true
@@ -363,8 +417,25 @@ export default function CalendarScreen() {
 
   // 加载后7天数据
   const loadNextDays = () => {
-    // startDate不变，只是显示更多天数（这里保持37天）
-    // 如果需要真的加载更多，可以增加天数参数
+    const newStartDate = new Date(startDate)
+    newStartDate.setDate(startDate.getDate() + 7)
+    setStartDate(newStartDate)
+    
+    // 保持当前视图位置，滚动到之前的位置-7个单元格
+    isScrollingProgrammatically.current = true
+    
+    setTimeout(() => {
+      const newScrollX = Math.max(0, scrollX - 7 * CELL_WIDTH)
+      dateHeaderScrollRef.current?.scrollTo({ x: newScrollX, animated: false })
+      contentScrollRef.current?.scrollTo({ x: newScrollX, animated: false })
+      lastScrollX.current = newScrollX
+      setScrollX(newScrollX)
+      
+      // 重置标志
+      setTimeout(() => {
+        isScrollingProgrammatically.current = false
+      }, 100)
+    }, 50)
   }
 
   // 处理日期选择
@@ -572,7 +643,7 @@ export default function CalendarScreen() {
     
     setTimeout(() => {
       const todayIndex = 7
-      const targetScrollX = todayIndex * CELL_WIDTH - (width - TODAY_CELL_WIDTH) / 2 + CELL_WIDTH / 2
+      const targetScrollX = todayIndex * CELL_WIDTH - (width - ROOM_CELL_WIDTH) / 2 + CELL_WIDTH / 2
       const scrollToX = Math.max(0, targetScrollX)
       
       dateHeaderScrollRef.current?.scrollTo({ x: scrollToX, animated: true })
@@ -850,7 +921,7 @@ export default function CalendarScreen() {
     }
     
     // 计算今日应该在的位置
-    const todayCenterX = todayIndex * CELL_WIDTH - (width - TODAY_CELL_WIDTH) / 2 + CELL_WIDTH / 2
+    const todayCenterX = todayIndex * CELL_WIDTH - (width - ROOM_CELL_WIDTH) / 2 + CELL_WIDTH / 2
     const todayScrollX = Math.max(0, todayCenterX)
     
     // 如果当前滚动位置距离今日位置超过5个单元格宽度，显示按钮
@@ -862,7 +933,7 @@ export default function CalendarScreen() {
   useEffect(() => {
     const timer = setTimeout(() => {
       const todayIndex = 7 // 今日在数组中的索引（从0开始的第7天）
-      const targetScrollX = todayIndex * CELL_WIDTH - (width - TODAY_CELL_WIDTH) / 2 + CELL_WIDTH / 2
+      const targetScrollX = todayIndex * CELL_WIDTH - (width - ROOM_CELL_WIDTH) / 2 + CELL_WIDTH / 2
       const scrollToX = Math.max(0, targetScrollX)
       
       isScrollingProgrammatically.current = true
@@ -951,7 +1022,7 @@ export default function CalendarScreen() {
                 setScrollX(scrollXValue)
                 
                 // 判断是否在边界（真正到达尽头时才显示）
-                const maxScrollX = dates.length * CELL_WIDTH - (width - TODAY_CELL_WIDTH)
+                const maxScrollX = dates.length * CELL_WIDTH - (width - ROOM_CELL_WIDTH)
                 setShowLeftArrow(scrollXValue <= 5)
                 setShowRightArrow(scrollXValue >= maxScrollX - 5)
                 
@@ -1025,7 +1096,7 @@ export default function CalendarScreen() {
                     {/* 该房型下的所有房间 */}
                     {filteredRooms.map(room => (
                       <View key={room.id} style={styles.roomCell}>
-                        <Text style={styles.roomName}>{room.name}</Text>
+                        <Text style={styles.roomName} numberOfLines={2} ellipsizeMode="tail">{room.name}</Text>
                       </View>
                 ))}
               </View>
@@ -1051,7 +1122,7 @@ export default function CalendarScreen() {
                 setScrollX(scrollXValue)
                 
                 // 判断是否在边界（真正到达尽头时才显示）
-                const maxScrollX = dates.length * CELL_WIDTH - (width - TODAY_CELL_WIDTH)
+                const maxScrollX = dates.length * CELL_WIDTH - (width - ROOM_CELL_WIDTH)
                 setShowLeftArrow(scrollXValue <= 5)
                 setShowRightArrow(scrollXValue >= maxScrollX - 5)
                 
@@ -1081,7 +1152,54 @@ export default function CalendarScreen() {
                       <View style={styles.roomTypePlaceholder} />
                       
                       {/* 该房型下的所有房间状态 */}
-                      {filteredRooms.map(room => (
+                      {filteredRooms.map(room => {
+                        // 检测连续的订单，用于合并单元格显示
+                        const reservationGroups: Array<{
+                          startIndex: number
+                          endIndex: number
+                          reservationId: string
+                          roomData: any
+                        }> = []
+                        
+                        let currentGroup: any = null
+                        
+                        dates.forEach((dateData, dateIndex) => {
+                          const roomData = dateData.rooms[room.id]
+                          const roomStatus = reduxRoomStatuses.find(
+                            rs => rs.roomId === room.id && rs.date === dateData.dateStr
+                          )
+                          
+                          if (roomData?.status === 'occupied' && roomStatus?.reservationId) {
+                            if (currentGroup && currentGroup.reservationId === roomStatus.reservationId) {
+                              // 同一订单，扩展当前组
+                              currentGroup.endIndex = dateIndex
+                            } else {
+                              // 新订单，创建新组
+                              if (currentGroup) {
+                                reservationGroups.push(currentGroup)
+                              }
+                              currentGroup = {
+                                startIndex: dateIndex,
+                                endIndex: dateIndex,
+                                reservationId: roomStatus.reservationId,
+                                roomData
+                              }
+                            }
+                          } else {
+                            // 非预订状态，保存当前组
+                            if (currentGroup) {
+                              reservationGroups.push(currentGroup)
+                              currentGroup = null
+                            }
+                          }
+                        })
+                        
+                        // 保存最后一个组
+                        if (currentGroup) {
+                          reservationGroups.push(currentGroup)
+                        }
+                        
+                        return (
                         <View key={room.id} style={styles.roomStatusRow}>
                           {dates.map((dateData, dateIndex) => {
                             const isSelected = isCellSelected(room.id, dateIndex)
@@ -1089,6 +1207,22 @@ export default function CalendarScreen() {
                             const roomData = dateData.rooms[room.id]
                             const isOccupied = roomData?.status === 'occupied'
                             const isCurrentDay = isToday(dateData.date)
+                            
+                            // 查找当前单元格所属的订单组
+                            const reservationGroup = reservationGroups.find(
+                              g => dateIndex >= g.startIndex && dateIndex <= g.endIndex
+                            )
+                            
+                            // 判断是否是订单的第一个单元格
+                            const isFirstCell = reservationGroup && dateIndex === reservationGroup.startIndex
+                            // 判断是否是订单的最后一个单元格
+                            const isLastCell = reservationGroup && dateIndex === reservationGroup.endIndex
+                            // 判断是否在订单中间
+                            const isMiddleCell = reservationGroup && !isFirstCell && !isLastCell
+                            
+                            // 获取订单颜色
+                            const orderColor = reservationGroup ? generateOrderColor(reservationGroup.reservationId) : undefined
+                            const borderColor = reservationGroup ? generateOrderBorderColor(reservationGroup.reservationId) : undefined
                         
                         return (
                           <TouchableOpacity
@@ -1098,10 +1232,18 @@ export default function CalendarScreen() {
                                   isSelected && styles.selectedCell,
                                   isOccupied && styles.occupiedCell,
                                   isCurrentDay && styles.todayStatusCell,
+                                  // 订单样式
+                                  reservationGroup && {
+                                    backgroundColor: orderColor,
+                                    borderRightWidth: isLastCell ? 1 : 0, // 只在最后一个单元格显示右边框
+                                    borderLeftWidth: isFirstCell ? 4 : 0, // 第一个单元格显示彩色左边框
+                                    borderLeftColor: borderColor,
+                                  },
                                 ]}
                                 onPress={() => handleCellPress(room.id, dateIndex, roomData)}
                               >
-                            {isOccupied && roomData && (
+                            {/* 只在第一个单元格显示订单信息 */}
+                            {isOccupied && roomData && isFirstCell && (
                               <View style={styles.reservationInfo}>
                                 <Text style={styles.reservationGuestName} numberOfLines={1} ellipsizeMode="tail">
                                   {roomData.guestName || '未知'}
@@ -1123,7 +1265,8 @@ export default function CalendarScreen() {
                         )
                       })}
                     </View>
-                  ))}
+                  )}
+                      )}
                     </View>
                   )
                 })}
@@ -1346,8 +1489,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
   },
   todayCell: {
-    width: TODAY_CELL_WIDTH,
-    height: 60,
+    width: ROOM_CELL_WIDTH,
+    height: CELL_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#4a90e2',
@@ -1357,16 +1500,16 @@ const styles = StyleSheet.create({
     borderBottomColor: '#d0d0d0',
   },
   todayLabel: {
-    fontSize: FontSizes.normal,
+    fontSize: FontSizes.tiny, // 使用tiny字体
     fontWeight: 'bold',
     color: 'white',
   },
   fixedDateRow: {
     position: 'absolute',
     top: 0,
-    left: TODAY_CELL_WIDTH,
+    left: ROOM_CELL_WIDTH,
     right: 0,
-    height: 60,
+    height: CELL_HEIGHT,
     zIndex: 2,
     backgroundColor: 'white',
     borderBottomWidth: 1,
@@ -1377,7 +1520,7 @@ const styles = StyleSheet.create({
   },
   dateCell: {
     width: CELL_WIDTH,
-    height: 60,
+    height: CELL_HEIGHT,
     paddingVertical: Spacings.md,
     paddingHorizontal: Spacings.sm,
     justifyContent: 'center',
@@ -1389,17 +1532,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#e3f2fd',
   },
   dateText: {
-    fontSize: FontSizes.small,
+    fontSize: FontSizes.tiny, // 使用tiny字体，更紧凑
     color: '#333',
     fontWeight: '500',
-    marginBottom: Spacings.xs,
+    marginBottom: 2, // 减小间距
   },
   todayDateText: {
     color: '#1976d2',
     fontWeight: 'bold',
   },
   availableText: {
-    fontSize: FontSizes.tiny,
+    fontSize: FontSizes.tiny * 0.9, // 更小的字体
     color: '#666',
   },
   todayAvailableText: {
@@ -1408,13 +1551,13 @@ const styles = StyleSheet.create({
   },
   mainScrollView: {
     flex: 1,
-    marginTop: 60,
+    marginTop: CELL_HEIGHT,
   },
   tableContent: {
     flexDirection: 'row',
   },
   leftColumn: {
-    width: TODAY_CELL_WIDTH,
+    width: ROOM_CELL_WIDTH,
     backgroundColor: 'white',
   },
   roomTypeHeader: {
@@ -1433,7 +1576,7 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   roomCell: {
-    height: 60,
+    height: CELL_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
     borderRightWidth: 1,
@@ -1441,11 +1584,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
     backgroundColor: 'white',
+    paddingHorizontal: 1, // 进一步减小水平内边距
   },
   roomName: {
-    fontSize: FontSizes.normal,
+    fontSize: FontSizes.tiny * 0.9, // 使用更小的字体
     fontWeight: '600',
     color: '#333',
+    textAlign: 'center',
   },
   rightColumn: {
     backgroundColor: 'white',
@@ -1458,11 +1603,11 @@ const styles = StyleSheet.create({
   },
   roomStatusRow: {
     flexDirection: 'row',
-    height: 60,
+    height: CELL_HEIGHT,
   },
   statusCell: {
     width: CELL_WIDTH,
-    height: 60,
+    height: CELL_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
     borderRightWidth: 1,
@@ -1475,7 +1620,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#c8e3ff',
   },
   occupiedCell: {
-    backgroundColor: '#ffe0b2',
+    backgroundColor: '#ffe0b2', // 默认颜色，会被订单颜色覆盖
   },
   todayStatusCell: {
     borderLeftWidth: 2,
@@ -1484,24 +1629,25 @@ const styles = StyleSheet.create({
   reservationInfo: {
     flex: 1,
     width: '100%',
-    paddingHorizontal: Spacings.xs,
-    paddingVertical: Spacings.xs,
+    paddingHorizontal: 3, // 增加一点padding，因为有左边框
+    paddingVertical: 1,
     justifyContent: 'center',
+    gap: 0.5,
   },
   reservationGuestName: {
-    fontSize: FontSizes.small,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 2,
+    fontSize: FontSizes.tiny * 0.95,
+    fontWeight: '700', // 加粗客人姓名
+    color: '#222',
+    marginBottom: 0.5,
   },
   reservationChannel: {
-    fontSize: FontSizes.tiny,
-    color: '#666',
-    marginBottom: 2,
+    fontSize: FontSizes.tiny * 0.85,
+    color: '#555',
+    marginBottom: 0.5,
   },
   reservationPhone: {
-    fontSize: FontSizes.tiny,
-    color: '#999',
+    fontSize: FontSizes.tiny * 0.8,
+    color: '#777',
   },
   checkmarkContainer: {
     position: 'absolute',
@@ -1515,12 +1661,14 @@ const styles = StyleSheet.create({
   },
   todayButton: {
     position: 'absolute',
-    bottom: 30, // 降低位置，更靠近底部
+    bottom: 30,
     alignSelf: 'center',
     backgroundColor: 'white',
-    paddingHorizontal: Spacings.xxl,
-    paddingVertical: 10,
+    paddingHorizontal: Math.max(20, Spacings.xxl), // 动态调整
+    paddingVertical: Math.max(10, Spacings.sm * 1.2),
+    minHeight: ComponentSizes.buttonHeightSmall, // 添加最小高度
     borderRadius: 20,
+    justifyContent: 'center', // 确保文字居中
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
@@ -1547,11 +1695,13 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    paddingVertical: Spacings.md,
+    paddingVertical: Math.max(12, Spacings.md), // 确保按钮有足够高度
+    minHeight: ComponentSizes.buttonHeightSmall, // 添加最小高度
     borderRadius: ComponentSizes.borderRadius,
     borderWidth: 1,
     borderColor: '#e0e0e0',
     alignItems: 'center',
+    justifyContent: 'center', // 确保文字垂直居中
     backgroundColor: 'white',
   },
   actionButtonText: {
@@ -1608,10 +1758,10 @@ const styles = StyleSheet.create({
   fabButton: {
     position: 'absolute',
     right: 20,
-    bottom: 30, // 降低位置，更靠近底部
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    bottom: 30,
+    width: Math.max(56, 50 + (fontScale - 1) * 20), // 动态调整大小
+    height: Math.max(56, 50 + (fontScale - 1) * 20),
+    borderRadius: Math.max(28, 25 + (fontScale - 1) * 10),
     backgroundColor: '#4a90e2',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1622,7 +1772,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   fabIcon: {
-    fontSize: FontSizes.huge,
+    fontSize: FontSizes.huge * 0.8, // 动态字体大小
     color: 'white',
     fontWeight: '300',
   },
