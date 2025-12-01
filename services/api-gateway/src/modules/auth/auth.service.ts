@@ -314,19 +314,48 @@ export class AuthService {
           // 1. 删除所有预订
           await tx.reservation.deleteMany({ where: { tenantId } })
           
-          // 2. 删除所有房间
-          await tx.room.deleteMany({ where: { tenantId } })
+          // 2. 获取该租户的所有物业
+          const properties = await tx.property.findMany({
+            where: { tenantId },
+            select: { id: true }
+          })
+          const propertyIds = properties.map(p => p.id)
           
-          // 3. 删除所有房型
-          await tx.roomType.deleteMany({ where: { tenantId } })
+          // 3. 删除所有日历覆盖
+          if (propertyIds.length > 0) {
+            await tx.calendarOverride.deleteMany({
+              where: { room: { propertyId: { in: propertyIds } } }
+            })
+            
+            // 4. 删除所有房间
+            await tx.room.deleteMany({
+              where: { propertyId: { in: propertyIds } }
+            })
+            
+            // 5. 删除所有价格规则
+            await tx.priceRule.deleteMany({
+              where: { propertyId: { in: propertyIds } }
+            })
+          }
           
-          // 4. 删除所有物业
+          // 6. 删除所有物业
           await tx.property.deleteMany({ where: { tenantId } })
           
-          // 5. 删除用户
+          // 7. 删除所有审计日志
+          await tx.auditLog.deleteMany({ where: { tenantId } })
+          
+          // 8. 删除用户
           await tx.user.delete({ where: { id: userId } })
           
-          // 6. 删除租户
+          // 9. 删除订阅信息（如果有）
+          const subscription = await tx.subscription.findUnique({
+            where: { tenantId }
+          })
+          if (subscription) {
+            await tx.subscription.delete({ where: { id: subscription.id } })
+          }
+          
+          // 10. 删除租户
           await tx.tenant.delete({ where: { id: tenantId } })
         })
 
