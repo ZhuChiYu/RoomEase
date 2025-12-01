@@ -9,29 +9,12 @@ const getLocalDateString = (date: Date): string => {
   return `${year}-${month}-${day}`
 }
 
-// 初始化示例数据
-const initialRooms: Room[] = [
-  { id: '1202', name: '1202', type: '大床房' },
-  { id: '1203', name: '1203', type: '大床房' },
-  { id: '1204', name: '1204', type: '大床房' },
-  { id: '12345', name: '12345', type: '双人房' },
-  { id: '1301', name: '1301', type: '豪华房' },
-  { id: '1302', name: '1302', type: '豪华房' },
-  { id: '1401', name: '1401', type: '套房' },
-]
-
-const initialRoomTypes: RoomTypeConfig[] = [
-  { id: '1', name: '大床房', shortName: '大床房', defaultPrice: 1000 },
-  { id: '2', name: '双人房', shortName: '双人房', defaultPrice: 1200 },
-  { id: '3', name: '豪华房', shortName: '豪华房', defaultPrice: 1500 },
-  { id: '4', name: '套房', shortName: '套房', defaultPrice: 2000 },
-]
-
+// 初始化为空数据，所有数据从云端API加载
 const initialState: CalendarState = {
-  rooms: initialRooms,
-  roomTypes: initialRoomTypes,
-  reservations: [],
-  roomStatuses: [],
+  rooms: [], // 从云端API加载
+  roomTypes: [], // 从房间数据自动生成
+  reservations: [], // 从云端API加载
+  roomStatuses: [], // 从云端API加载
   operationLogs: [],
   payments: [],
 }
@@ -205,6 +188,49 @@ const calendarSlice = createSlice({
     setRooms: (state, action: PayloadAction<Room[]>) => {
       console.log('🔄 [Redux] setRooms:', action.payload.length)
       state.rooms = action.payload
+      
+      // 自动根据房间数据生成或更新房型配置
+      console.log('🏠 [Redux] 开始更新房型配置...')
+      
+      // 提取所有房间类型
+      const roomTypesSet = new Set<string>()
+      action.payload.forEach(room => {
+        if (room.type) {
+          roomTypesSet.add(room.type)
+        }
+      })
+      
+      console.log('🏠 [Redux] 发现的房间类型:', Array.from(roomTypesSet))
+      
+      // 合并房型配置：保留已有的房型配置（即使没有房间），并添加新的房型
+      const newRoomTypes: RoomTypeConfig[] = []
+      
+      // 1. 先保留所有已存在的房型配置（包括没有房间的）
+      state.roomTypes.forEach(existingType => {
+        newRoomTypes.push(existingType)
+        console.log('🏠 [Redux] 保留已有房型配置:', existingType.name)
+      })
+      
+      // 2. 添加新发现的房型（房间数据中有，但配置中没有的）
+      let index = newRoomTypes.length + 1
+      roomTypesSet.forEach(typeName => {
+        const exists = newRoomTypes.find(rt => rt.name === typeName)
+        if (!exists) {
+          const newType = {
+            id: `auto_${index}`,
+            name: typeName,
+            shortName: typeName,
+            defaultPrice: 1000, // 默认价格
+            differentiateWeekend: false
+          }
+          newRoomTypes.push(newType)
+          console.log('🏠 [Redux] 新建房型配置:', typeName)
+          index++
+        }
+      })
+      
+      state.roomTypes = newRoomTypes
+      console.log('✅ [Redux] 房型配置已更新，共', newRoomTypes.length, '个房型:', newRoomTypes.map(rt => rt.name))
     },
 
     // 设置预订列表（从API加载）

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react'
+import React, { useState, useMemo, useCallback, useEffect } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import {
   View,
@@ -12,7 +12,7 @@ import {
   Alert,
   RefreshControl,
 } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useRouter, useLocalSearchParams } from 'expo-router'
 import { DateWheelPicker } from '../components/DateWheelPicker'
 import { useAppSelector, useAppDispatch } from '../store/hooks'
 import { deleteReservation, setRooms, setReservations, setRoomStatuses } from '../store/calendarSlice'
@@ -132,6 +132,7 @@ function ReservationCard({ reservation, onPress, onDelete }: ReservationCardProp
 export default function ReservationsScreen() {
   const router = useRouter()
   const dispatch = useAppDispatch()
+  const params = useLocalSearchParams()
   const [searchText, setSearchText] = useState('')
   const [selectedFilter, setSelectedFilter] = useState('all')
   const [refreshing, setRefreshing] = useState(false)
@@ -166,8 +167,17 @@ export default function ReservationsScreen() {
     { id: 'checked-in', name: '已入住' },
     { id: 'checked-out', name: '已退房' },
     { id: 'cancelled', name: '已取消' },
-    { id: 'today', name: '今日' },
+    { id: 'checkin-today', name: '今日入住' },
+    { id: 'checkout-today', name: '今日退房' },
   ]
+
+  // 处理从首页传递过来的筛选参数
+  useEffect(() => {
+    if (params.filter && typeof params.filter === 'string') {
+      console.log('📋 [预订管理] 接收到筛选参数:', params.filter)
+      setSelectedFilter(params.filter)
+    }
+  }, [params.filter])
 
   // 从Redux获取真实预订数据和房间数据
   const reduxReservations = useAppSelector(state => state.calendar.reservations)
@@ -307,6 +317,8 @@ export default function ReservationsScreen() {
   })
 
   const filteredReservations = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0]
+    
     let filtered = reservations.filter(reservation => {
       // 搜索过滤
       const matchesSearch = searchText === '' || 
@@ -316,9 +328,22 @@ export default function ReservationsScreen() {
         reservation.guestPhone.includes(searchText)
       
       // 状态过滤
-      const matchesFilter = selectedFilter === 'all' || 
-                           reservation.status === selectedFilter ||
-                           (selectedFilter === 'today' && reservation.checkIn === new Date().toISOString().split('T')[0])
+      let matchesFilter = false
+      if (selectedFilter === 'all') {
+        matchesFilter = true
+      } else if (selectedFilter === 'checkin-today') {
+        // 今日入住：入住日期是今天，且未取消
+        matchesFilter = reservation.checkIn === today && reservation.status !== 'cancelled'
+      } else if (selectedFilter === 'checkout-today') {
+        // 今日退房：退房日期是今天，且未取消
+        matchesFilter = reservation.checkOut === today && reservation.status !== 'cancelled'
+      } else if (selectedFilter === 'today') {
+        // 今日：入住或退房日期是今天
+        matchesFilter = (reservation.checkIn === today || reservation.checkOut === today) && reservation.status !== 'cancelled'
+      } else {
+        // 按状态筛选
+        matchesFilter = reservation.status === selectedFilter
+      }
       
       // 日期范围过滤
       let matchesDateRange = true

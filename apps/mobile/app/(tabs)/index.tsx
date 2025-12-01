@@ -19,6 +19,7 @@ import { authStorage } from '../services/storage'
 import { dataService } from '../services/dataService'
 import { setRooms, setReservations, setRoomStatuses } from '../store/calendarSlice'
 import { FontSizes, Spacings, ComponentSizes } from '../utils/responsive'
+import { useAuth } from '../contexts/AuthContext'
 
 const { width } = Dimensions.get('window')
 
@@ -101,6 +102,7 @@ function ReservationItem({ guestName, room, checkIn, status, onPress }: Reservat
 
 export default function HomeScreen() {
   const router = useRouter()
+  const { isAuthenticated, user } = useAuth()
   
   // 从Redux获取数据
   const reservations = useAppSelector(state => state.calendar.reservations)
@@ -125,6 +127,12 @@ export default function HomeScreen() {
   
   // 加载数据（当页面获得焦点且数据为空时）
   const loadData = useCallback(async () => {
+    // 检查认证状态
+    if (!isAuthenticated) {
+      console.log('🏠 [首页] 未登录，跳过数据加载')
+      return
+    }
+    
     // 如果已经有数据，且不是初次加载，则跳过
     if (!isInitialLoad && reservations.length > 0) {
       console.log('🏠 [首页] 数据已存在，跳过加载')
@@ -171,14 +179,14 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('❌ [首页] 数据加载失败:', error)
     }
-  }, [isInitialLoad, reservations.length, dispatch])
+  }, [isInitialLoad, reservations.length, dispatch, isAuthenticated])
   
   // 页面获得焦点时加载数据
   useFocusEffect(
     useCallback(() => {
-      console.log('🏠 [首页] 页面获得焦点')
+      console.log('🏠 [首页] 页面获得焦点，认证状态:', isAuthenticated)
       loadData()
-    }, [loadData])
+    }, [loadData, isAuthenticated])
   )
 
   const loadUserInfo = async () => {
@@ -297,7 +305,10 @@ export default function HomeScreen() {
     const monthlyRevenue = reservations.filter((r: any) => {
       if (!r.checkInDate) return false
       const checkInDate = new Date(r.checkInDate)
-      return checkInDate.getMonth() + 1 === currentMonth && checkInDate.getFullYear() === currentYear
+      const isCancelled = r.status === 'cancelled' || r.status === 'CANCELLED'
+      return checkInDate.getMonth() + 1 === currentMonth && 
+             checkInDate.getFullYear() === currentYear && 
+             !isCancelled  // 排除已取消的订单
     }).reduce((sum, r: any) => sum + (Number(r.totalAmount) || 0), 0) || 0
     
     console.log('🏠 [首页统计] 本月收入:', monthlyRevenue)
@@ -570,8 +581,12 @@ export default function HomeScreen() {
               <KPICard 
                 {...kpi} 
                 onPress={() => {
-                  if (kpi.title.includes('入住') || kpi.title.includes('退房')) {
-                    router.push('/reservations')
+                  if (kpi.title === '今日入住') {
+                    router.push('/(tabs)/reservations?filter=checkin-today')
+                  } else if (kpi.title === '今日退房') {
+                    router.push('/(tabs)/reservations?filter=checkout-today')
+                  } else if (kpi.title === '今日入住费用') {
+                    router.push('/revenue-details?period=today')
                   } else if (kpi.title.includes('在住')) {
                     router.push('/calendar')
                   } else if (kpi.title.includes('收入')) {
@@ -581,73 +596,6 @@ export default function HomeScreen() {
               />
             </View>
           ))}
-        </View>
-
-        {/* 快捷操作 */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>快捷操作</Text>
-          <View style={styles.quickActions}>
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={() => {
-                Alert.alert(
-                  '新建预订',
-                  '请选择预订方式',
-                  [
-                    { text: '手动预订', onPress: () => handleNewBooking('manual') },
-                    { text: '快速预订', onPress: () => handleNewBooking('quick') },
-                    { text: '取消', style: 'cancel' }
-                  ]
-                )
-              }}
-            >
-              <Text style={styles.actionText}>新建预订</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={() => router.push('/calendar')}
-            >
-              <Text style={styles.actionText}>房态管理</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={() => {
-                Alert.alert(
-                  '客人入住',
-                  '选择入住方式',
-                  [
-                    { text: '扫描身份证', onPress: () => handleGuestCheckin('scan') },
-                    { text: '手动录入', onPress: () => handleGuestCheckin('manual') },
-                    { text: '取消', style: 'cancel' }
-                  ]
-                )
-              }}
-            >
-              <Text style={styles.actionText}>客人入住</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={() => {
-                Alert.alert(
-                  '客人退房',
-                  '选择退房处理方式',
-                  [
-                    { text: '快速退房', onPress: () => handleQuickCheckout() },
-                    { text: '结算退房', onPress: () => handleBillingCheckout() },
-                    { text: '取消', style: 'cancel' }
-                  ]
-                )
-              }}
-            >
-              <Text style={styles.actionText}>客人退房</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={() => router.push('/room-type-settings')}
-            >
-              <Text style={styles.actionText}>房型设置</Text>
-            </TouchableOpacity>
-          </View>
         </View>
 
         {/* 最近预订 */}

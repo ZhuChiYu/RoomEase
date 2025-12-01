@@ -23,6 +23,7 @@ import { useAppSelector, useAppDispatch } from '../store/hooks'
 import { FEATURE_FLAGS } from '../config/environment'
 import { dataService } from '../services'
 import { setRooms, setReservations, setRoomStatuses } from '../store/calendarSlice'
+import { useAuth } from '../contexts/AuthContext'
 
 const { width } = Dimensions.get('window')
 // 根据字体缩放动态调整单元格宽度
@@ -39,18 +40,18 @@ const generateOrderColor = (reservationId: string): string => {
     hash = reservationId.charCodeAt(i) + ((hash << 5) - hash)
   }
   
-  // 预定义的柔和颜色方案
+  // 预定义的柔和颜色方案（加深版）
   const colors = [
-    '#FFE5E5', // 浅红
-    '#E5F5FF', // 浅蓝
-    '#E5FFE5', // 浅绿
-    '#FFF5E5', // 浅橙
-    '#F5E5FF', // 浅紫
-    '#FFE5F5', // 浅粉
-    '#E5FFFF', // 浅青
-    '#FFFFE5', // 浅黄
-    '#F0E5FF', // 淡紫
-    '#E5FFF0', // 淡绿
+    '#FFD1D1', // 红色系
+    '#D1E7FF', // 蓝色系
+    '#D1FFD1', // 绿色系
+    '#FFE8D1', // 橙色系
+    '#E8D1FF', // 紫色系
+    '#FFD1E8', // 粉色系
+    '#D1F5FF', // 青色系
+    '#FFF4D1', // 黄色系
+    '#E0D1FF', // 淡紫系
+    '#D1FFE0', // 淡绿系
   ]
   
   const index = Math.abs(hash) % colors.length
@@ -65,23 +66,23 @@ const generateOrderBorderColor = (reservationId: string): string => {
   }
   
   const colors = [
-    '#FF6B6B', // 红
-    '#4ECDC4', // 青
-    '#45B7D1', // 蓝
-    '#FFA07A', // 橙
-    '#DDA0DD', // 紫
-    '#98D8C8', // 薄荷绿
-    '#F7DC6F', // 黄
-    '#BB8FCE', // 淡紫
-    '#85C1E2', // 天蓝
-    '#F8B88B', // 杏色
+    '#FF5252', // 红（加深）
+    '#26C6DA', // 青（加深）
+    '#42A5F5', // 蓝（加深）
+    '#FF8A65', // 橙（加深）
+    '#BA68C8', // 紫（加深）
+    '#66BB6A', // 绿（加深）
+    '#FFEE58', // 黄（加深）
+    '#AB47BC', // 淡紫（加深）
+    '#5C6BC0', // 靛蓝（加深）
+    '#FF7043', // 深橙（加深）
   ]
   
   const index = Math.abs(hash) % colors.length
   return colors[index]
 }
 
-type RoomType = '大床房' | '双人房' | '豪华房' | '套房'
+type RoomType = string
 
 interface Room {
   id: string
@@ -152,6 +153,7 @@ const getAvailableRooms = (dateData: DateData, rooms: Room[]): number => {
 export default function CalendarScreen() {
   const router = useRouter()
   const dispatch = useAppDispatch()
+  const { isAuthenticated } = useAuth()
   const dateHeaderScrollRef = useRef<ScrollView>(null)
   const contentScrollRef = useRef<ScrollView>(null)
   const isScrollingProgrammatically = useRef(false)
@@ -165,6 +167,7 @@ export default function CalendarScreen() {
   const reduxRooms = useAppSelector(state => state.calendar.rooms)
   const reduxReservations = useAppSelector(state => state.calendar.reservations)
   const reduxRoomStatuses = useAppSelector(state => state.calendar.roomStatuses)
+  const reduxRoomTypes = useAppSelector(state => state.calendar.roomTypes)
   
   // 加载状态
   const [isLoading, setIsLoading] = useState(false)
@@ -457,6 +460,12 @@ export default function CalendarScreen() {
 
   // 从API加载数据
   const loadDataFromAPI = React.useCallback(async (showLoading = true, clearCache = false) => {
+    // 检查认证状态
+    if (!isAuthenticated) {
+      console.log('📅 [Calendar] 未登录，跳过数据加载')
+      return
+    }
+    
     try {
       if (showLoading) {
         setIsLoading(true)
@@ -547,7 +556,7 @@ export default function CalendarScreen() {
       setIsLoading(false)
       setIsRefreshing(false)
     }
-  }, [startDate, dispatch])
+  }, [startDate, dispatch, isAuthenticated])
   
   // 刷新数据（强制清除缓存）
   const handleRefresh = async () => {
@@ -855,26 +864,30 @@ export default function CalendarScreen() {
   // 处理筛选按钮
   const handleFilterPress = () => {
     if (Platform.OS === 'ios') {
+      // 动态生成选项：取消 + 所有房型 + 房型设置
+      const roomTypeNames = reduxRoomTypes.map(rt => rt.name)
+      const options = ['取消', ...roomTypeNames, '房型设置']
+      
       ActionSheetIOS.showActionSheetWithOptions(
         {
-          options: ['取消', '大床房', '双人房', '豪华房', '套房', '全部房型'],
+          options,
           cancelButtonIndex: 0,
         },
         buttonIndex => {
-          if (buttonIndex === 1) {
-            setSelectedRoomTypes(new Set(['大床房']))
-          } else if (buttonIndex === 2) {
-            setSelectedRoomTypes(new Set(['双人房']))
-          } else if (buttonIndex === 3) {
-            setSelectedRoomTypes(new Set(['豪华房']))
-          } else if (buttonIndex === 4) {
-            setSelectedRoomTypes(new Set(['套房']))
-          } else if (buttonIndex === 5) {
-            setSelectedRoomTypes(new Set())
+          if (buttonIndex === 0) {
+            // 取消
+            return
+          } else if (buttonIndex === options.length - 1) {
+            // 最后一个选项：房型设置
+            router.push('/room-type-settings')
+          } else {
+            // 选择具体房型
+            const selectedType = roomTypeNames[buttonIndex - 1]
+            setSelectedRoomTypes(new Set([selectedType]))
           }
         }
-        )
-      } else {
+      )
+    } else {
       setFilterModalVisible(true)
     }
   }
@@ -1231,13 +1244,28 @@ export default function CalendarScreen() {
                               styles.statusCell,
                                   isSelected && styles.selectedCell,
                                   isOccupied && styles.occupiedCell,
-                                  isCurrentDay && styles.todayStatusCell,
                                   // 订单样式
                                   reservationGroup && {
                                     backgroundColor: orderColor,
                                     borderRightWidth: isLastCell ? 1 : 0, // 只在最后一个单元格显示右边框
                                     borderLeftWidth: isFirstCell ? 4 : 0, // 第一个单元格显示彩色左边框
                                     borderLeftColor: borderColor,
+                                  },
+                                  // 今日列样式（放在最后，确保边框显示）
+                                  isCurrentDay && {
+                                    backgroundColor: reservationGroup ? orderColor : 'rgba(227, 242, 253, 0.6)',
+                                    borderLeftWidth: reservationGroup && !isFirstCell ? 3 : (isFirstCell ? 4 : 3),
+                                    borderLeftColor: reservationGroup && isFirstCell ? borderColor : '#1976d2',
+                                    borderRightWidth: 3,
+                                    borderRightColor: '#1976d2',
+                                    // 添加半透明蓝色遮罩效果
+                                    ...(reservationGroup && {
+                                      shadowColor: '#1976d2',
+                                      shadowOffset: { width: 0, height: 0 },
+                                      shadowOpacity: 0.3,
+                                      shadowRadius: 0,
+                                      elevation: 0,
+                                    }),
                                   },
                                 ]}
                                 onPress={() => handleCellPress(room.id, dateIndex, roomData)}
@@ -1384,27 +1412,27 @@ export default function CalendarScreen() {
           <View style={styles.filterSheet}>
             <Text style={styles.filterTitle}>筛选</Text>
             
-            {['大床房', '双人房', '豪华房', '套房'].map(type => (
+            {reduxRoomTypes.map(roomType => (
                  <TouchableOpacity
-                key={type}
+                key={roomType.id}
                 style={styles.filterOption}
                 onPress={() => {
-                  setSelectedRoomTypes(new Set([type as RoomType]))
+                  setSelectedRoomTypes(new Set([roomType.name]))
                   setFilterModalVisible(false)
                 }}
               >
-                <Text style={styles.filterOptionText}>{type}</Text>
+                <Text style={styles.filterOptionText}>{roomType.name}</Text>
                  </TouchableOpacity>
             ))}
             
                <TouchableOpacity
               style={styles.filterOption}
               onPress={() => {
-                setSelectedRoomTypes(new Set())
                 setFilterModalVisible(false)
+                router.push('/room-type-settings')
               }}
             >
-              <Text style={styles.filterOptionText}>全部房型</Text>
+              <Text style={styles.filterOptionText}>房型设置</Text>
                </TouchableOpacity>
             
                <TouchableOpacity
@@ -1529,7 +1557,11 @@ const styles = StyleSheet.create({
     borderRightColor: '#e0e0e0',
   },
   todayDateCell: {
-    backgroundColor: '#e3f2fd',
+    backgroundColor: '#BBDEFB', // 更深的蓝色背景
+    borderLeftWidth: 3,
+    borderLeftColor: '#1976d2',
+    borderRightWidth: 3,
+    borderRightColor: '#1976d2',
   },
   dateText: {
     fontSize: FontSizes.tiny, // 使用tiny字体，更紧凑
@@ -1623,8 +1655,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffe0b2', // 默认颜色，会被订单颜色覆盖
   },
   todayStatusCell: {
-    borderLeftWidth: 2,
+    backgroundColor: 'rgba(227, 242, 253, 0.5)', // 半透明蓝色背景
+    borderLeftWidth: 3,
     borderLeftColor: '#1976d2',
+    borderRightWidth: 3,
+    borderRightColor: '#1976d2',
   },
   reservationInfo: {
     flex: 1,

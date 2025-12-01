@@ -19,6 +19,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { dataService } from '../services/dataService'
 import { api } from '../services/api'
 import { FontSizes, Spacings, ComponentSizes } from '../utils/responsive'
+import { useRouter } from 'expo-router'
 
 interface UserInfo {
   name: string
@@ -68,6 +69,7 @@ function SettingItem({ label, value, type, onPress, onValueChange }: SettingsPro
 }
 
 export default function ProfileScreen() {
+  const router = useRouter()
   const dispatch = useAppDispatch()
   const calendarState = useAppSelector(state => state.calendar)
   const { logout, user, refreshUser } = useAuth()
@@ -98,7 +100,6 @@ export default function ProfileScreen() {
     rooms: 0,
     reservations: 0,
     roomStatuses: 0,
-    storageSize: '0 KB',
   })
 
   const [isLoading, setIsLoading] = useState(false)
@@ -152,7 +153,6 @@ export default function ProfileScreen() {
       rooms: rooms.length || 0,
       reservations: reservations.length || 0,
       roomStatuses: roomStatuses.length || 0,
-      storageSize: '0 KB',
     })
   }
 
@@ -344,81 +344,11 @@ export default function ProfileScreen() {
   }
 
   const handleAbout = () => {
-    Alert.alert(
-      '关于 RoomEase',
-      'RoomEase 酒店民宿管理系统\n版本: 1.0.0\n\n一款专业的酒店民宿管理解决方案，帮助您轻松管理房态、预订、客户等各项业务。\n\n© 2024 RoomEase Team',
-      [{ text: '确定' }]
-    )
+    router.push('/about')
   }
 
   const handleHelp = () => {
-    Alert.alert(
-      '帮助与支持',
-      '选择您需要的帮助类型',
-      [
-        { text: '使用教程', onPress: () => showTutorial() },
-        { text: '常见问题', onPress: () => showFAQ() },
-        { text: '联系客服', onPress: () => showContact() },
-        { text: '意见反馈', onPress: () => showFeedback() },
-        { text: '取消', style: 'cancel' }
-      ]
-    )
-  }
-
-  const showTutorial = () => {
-    Alert.alert(
-      '使用教程',
-      '📱 快速入门指南\n\n1. 房态管理：在房态日历中查看和管理房间状态\n2. 预订管理：创建、修改和取消客房预订\n3. 客人入住：扫描身份证或手动录入客人信息\n4. 数据报表：查看经营数据和统计报表\n\n💡 提示：长按房态格子可以批量选择操作',
-      [
-        { text: '查看视频教程', onPress: () => Alert.alert('提示', '视频教程正在制作中...') },
-        { text: '确定' }
-      ]
-    )
-  }
-
-  const showFAQ = () => {
-    Alert.alert(
-      '常见问题',
-      '❓ 常见问题解答\n\n• 如何修改房间价格？\n  在房态日历中点击房间格子，选择"设置价格"\n\n• 如何批量操作房间状态？\n  长按房间格子启动多选模式，然后滑动选择\n\n• 忘记密码怎么办？\n  在个人中心选择"修改密码"重新设置\n\n• 数据如何备份？\n  在个人中心选择"数据备份"进行云端备份',
-      [
-        { text: '更多问题', onPress: () => Alert.alert('提示', '完整FAQ页面正在开发中...') },
-        { text: '确定' }
-      ]
-    )
-  }
-
-  const showContact = () => {
-    Alert.alert(
-      '联系客服',
-      '📞 客服热线：400-123-4567\n⏰ 服务时间：9:00-18:00（工作日）\n\n📧 邮箱支持：support@roomease.com\n\n💬 在线客服：微信扫码添加客服',
-      [
-        { text: '拨打电话', onPress: () => Alert.alert('提示', '即将拨打客服电话...') },
-        { text: '发送邮件', onPress: () => Alert.alert('提示', '即将打开邮件应用...') },
-        { text: '确定' }
-      ]
-    )
-  }
-
-  const showFeedback = () => {
-    setFeedbackModalVisible(true)
-  }
-
-  const [feedbackModalVisible, setFeedbackModalVisible] = useState(false)
-  const [feedbackData, setFeedbackData] = useState({
-    type: '',
-    content: '',
-    contact: '',
-  })
-
-  const saveFeedback = () => {
-    if (!feedbackData.type || !feedbackData.content.trim()) {
-      Alert.alert('错误', '请选择反馈类型并填写反馈内容')
-      return
-    }
-
-    setFeedbackModalVisible(false)
-    setFeedbackData({ type: '', content: '', contact: '' })
-    Alert.alert('反馈成功', '感谢您的反馈！我们会及时处理您的意见。')
+    router.push('/help-support')
   }
 
   return (
@@ -542,10 +472,6 @@ export default function ProfileScreen() {
                 <Text style={styles.statValue}>{dataStats.roomStatuses}</Text>
                 <Text style={styles.statLabel}>房态</Text>
               </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{dataStats.storageSize}</Text>
-                <Text style={styles.statLabel}>存储</Text>
-              </View>
             </View>
           </View>
 
@@ -556,10 +482,6 @@ export default function ProfileScreen() {
               onPress={handleClearCache}
             />
           </View>
-          
-          <Text style={styles.dataManagementTip}>
-            💡 提示：所有数据都存储在云端服务器。本地缓存仅用于提高加载速度，清除缓存后会从服务器重新获取数据。
-          </Text>
         </View>
 
         {/* 其他设置 */}
@@ -683,73 +605,6 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      {/* 意见反馈弹窗 */}
-      <Modal
-        visible={feedbackModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setFeedbackModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>意见反馈</Text>
-            
-            <Text style={styles.fieldLabel}>反馈类型</Text>
-            <View style={styles.typeSelector}>
-              {['功能建议', '问题反馈', '使用咨询', '其他'].map(type => (
-                <TouchableOpacity
-                  key={type}
-                  style={[
-                    styles.typeButton,
-                    feedbackData.type === type && styles.typeButtonActive
-                  ]}
-                  onPress={() => setFeedbackData(prev => ({ ...prev, type }))}
-                >
-                  <Text style={[
-                    styles.typeButtonText,
-                    feedbackData.type === type && styles.typeButtonTextActive
-                  ]}>
-                    {type}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            
-            <Text style={styles.fieldLabel}>反馈内容</Text>
-            <TextInput
-              style={[styles.modalInput, styles.textArea]}
-              value={feedbackData.content}
-              onChangeText={(text) => setFeedbackData(prev => ({ ...prev, content: text }))}
-              placeholder="请详细描述您的意见或遇到的问题..."
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-            />
-            
-            <TextInput
-              style={styles.modalInput}
-              value={feedbackData.contact}
-              onChangeText={(text) => setFeedbackData(prev => ({ ...prev, contact: text }))}
-              placeholder="联系方式（可选）"
-            />
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => setFeedbackModalVisible(false)}
-              >
-                <Text style={styles.cancelButtonText}>取消</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.confirmButton]}
-                onPress={saveFeedback}
-              >
-                <Text style={styles.confirmButtonText}>提交反馈</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   )
 }
@@ -928,43 +783,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
   },
-  fieldLabel: {
-    fontSize: FontSizes.normal,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: Spacings.sm,
-    marginTop: Spacings.sm,
-  },
-  typeSelector: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: Spacings.lg,
-  },
-  typeButton: {
-    paddingHorizontal: Spacings.md,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#f8fafc',
-  },
-  typeButtonActive: {
-    backgroundColor: '#6366f1',
-    borderColor: '#6366f1',
-  },
-  typeButtonText: {
-    fontSize: FontSizes.small,
-    color: '#64748b',
-    fontWeight: '500',
-  },
-  typeButtonTextActive: {
-    color: 'white',
-  },
-  textArea: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
   statsCard: {
     backgroundColor: 'white',
     borderRadius: ComponentSizes.borderRadiusLarge,
@@ -1001,13 +819,6 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: FontSizes.small,
     color: '#94a3b8',
-  },
-  dataManagementTip: {
-    fontSize: FontSizes.small,
-    color: '#64748b',
-    marginTop: Spacings.md,
-    lineHeight: 18,
-    paddingHorizontal: Spacings.xs,
   },
   loadingOverlay: {
     position: 'absolute',

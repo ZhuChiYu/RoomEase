@@ -300,6 +300,34 @@ export default function RootLayout() {
               headerShown: false
             }} 
           />
+          <Stack.Screen 
+            name="help-support" 
+            options={{ 
+              title: '帮助与支持',
+              headerShown: false
+            }} 
+          />
+          <Stack.Screen 
+            name="about" 
+            options={{ 
+              title: '关于我们',
+              headerShown: false
+            }} 
+          />
+          <Stack.Screen 
+            name="user-agreement" 
+            options={{ 
+              title: '用户协议',
+              headerShown: false
+            }} 
+          />
+          <Stack.Screen 
+            name="privacy-policy" 
+            options={{ 
+              title: '隐私政策',
+              headerShown: false
+            }} 
+          />
           </Stack>
           <StatusBar style="auto" />
           </GestureHandlerRootView>

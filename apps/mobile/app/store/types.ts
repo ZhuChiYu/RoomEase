@@ -1,6 +1,7 @@
 // Redux 状态类型定义
 
-export type RoomType = '大床房' | '双人房' | '豪华房' | '套房'
+// 房型可以是任意字符串，不再限制为固定的几种
+export type RoomType = string
 
 export interface RoomTypeConfig {
   id: string
