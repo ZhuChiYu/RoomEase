@@ -128,9 +128,23 @@ export const authStorage = {
     return await storage.getObject(STORAGE_KEYS.USER_INFO)
   },
 
+  getSettings: async (): Promise<any | null> => {
+    return await storage.getObject('@user_settings')
+  },
+
+  saveSettings: async (settings: any) => {
+    await storage.setObject('@user_settings', settings)
+  },
+
   clearAuth: async () => {
     await storage.removeItem(STORAGE_KEYS.AUTH_TOKEN)
     await storage.removeItem(STORAGE_KEYS.USER_INFO)
+  },
+
+  clearAll: async () => {
+    await storage.removeItem(STORAGE_KEYS.AUTH_TOKEN)
+    await storage.removeItem(STORAGE_KEYS.USER_INFO)
+    await storage.removeItem('@user_settings')
   },
 }
 

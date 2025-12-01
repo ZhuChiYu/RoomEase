@@ -528,6 +528,10 @@ export const api = {
       })
       return response.data
     },
+    deleteAccount: async () => {
+      const response = await apiClient.delete('/auth/account')
+      return response.data
+    },
     // 更新用户信息
     updateProfile: async (profileData: {
       name?: string

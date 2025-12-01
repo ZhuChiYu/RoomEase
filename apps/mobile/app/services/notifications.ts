@@ -2,19 +2,42 @@ import * as Notifications from 'expo-notifications'
 import { Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
-// 配置通知处理器
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-})
+// 声音设置存储key
+const SOUND_SETTINGS_KEY = '@notification_sound_enabled'
+
+// 动态配置通知处理器
+const updateNotificationHandler = async () => {
+  try {
+    const soundEnabled = await AsyncStorage.getItem(SOUND_SETTINGS_KEY)
+    const shouldPlaySound = soundEnabled !== null ? JSON.parse(soundEnabled) : true
+    
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: shouldPlaySound,
+        shouldSetBadge: true,
+      }),
+    })
+  } catch (error) {
+    console.error('更新通知处理器失败:', error)
+    // 默认配置
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    })
+  }
+}
+
+// 初始化通知处理器
+updateNotificationHandler()
 
 // 通知服务
 export const notificationService = {
   // 初始化通知权限
-  requestPermissions: async (): Promise<boolean> => {
+  requestPermissions: async (): Promise<{ status: string }> => {
     try {
       const { status: existingStatus } = await Notifications.getPermissionsAsync()
       let finalStatus = existingStatus
@@ -26,7 +49,7 @@ export const notificationService = {
 
       if (finalStatus !== 'granted') {
         console.log('Failed to get push notification permissions')
-        return false
+        return { status: finalStatus }
       }
 
       // 如果是 Android，设置通知渠道
@@ -39,10 +62,34 @@ export const notificationService = {
         })
       }
 
-      return true
+      return { status: finalStatus }
     } catch (error) {
       console.error('Error requesting notification permissions:', error)
-      return false
+      return { status: 'denied' }
+    }
+  },
+
+  // 设置声音是否启用
+  setSoundEnabled: async (enabled: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(SOUND_SETTINGS_KEY, JSON.stringify(enabled))
+      // 更新通知处理器
+      await updateNotificationHandler()
+      console.log('通知声音设置已更新:', enabled)
+    } catch (error) {
+      console.error('保存声音设置失败:', error)
+      throw error
+    }
+  },
+
+  // 获取声音设置
+  getSoundEnabled: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(SOUND_SETTINGS_KEY)
+      return value !== null ? JSON.parse(value) : true // 默认开启
+    } catch (error) {
+      console.error('获取声音设置失败:', error)
+      return true
     }
   },
 
@@ -64,12 +111,15 @@ export const notificationService = {
     data?: any,
     trigger?: Notifications.NotificationTriggerInput
   ): Promise<string> => {
+    // 检查是否启用声音
+    const soundEnabled = await notificationService.getSoundEnabled()
+    
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
         title,
         body,
         data: data || {},
-        sound: true,
+        sound: soundEnabled ? 'default' : undefined,
       },
       trigger: trigger || null, // null 表示立即发送
     })
