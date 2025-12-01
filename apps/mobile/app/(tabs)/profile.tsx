@@ -700,10 +700,10 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: () => {
             // 二次确认
-            Alert.alert(
+    Alert.alert(
               '最后确认',
               '此操作不可撤销，您真的要注销账号吗？',
-              [
+      [
                 { text: '我再想想', style: 'cancel' },
                 {
                   text: '确认注销',
@@ -723,7 +723,7 @@ export default function ProfileScreen() {
                           text: '确定',
                           onPress: async () => {
                             await logout()
-                          }
+  }
                         }
                       ])
                     } catch (error: any) {

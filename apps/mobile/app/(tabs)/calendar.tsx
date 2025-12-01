@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   PixelRatio,
+  Animated,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { FontSizes, Spacings, ComponentSizes } from '../utils/responsive'
@@ -158,6 +159,7 @@ export default function CalendarScreen() {
   const contentScrollRef = useRef<ScrollView>(null)
   const isScrollingProgrammatically = useRef(false)
   const lastScrollX = useRef(0)
+  const lastSyncTime = useRef(0) // 记录上次同步时间，避免高频触发
   const scrollSyncTimeout = useRef<any>(null)
   const hasMountedRef = useRef(false)
   const isLoadingData = useRef(false)
@@ -1022,36 +1024,31 @@ export default function CalendarScreen() {
             ref={dateHeaderScrollRef}
               horizontal
               showsHorizontalScrollIndicator={false}
-              scrollEventThrottle={16}
+              scrollEventThrottle={1}
               onScroll={(event) => {
+                // 如果是程序化滚动，跳过
                 if (isScrollingProgrammatically.current) return
                 
                 const scrollXValue = event.nativeEvent.contentOffset.x
+                const now = Date.now()
                 
-                // 防止重复同步：只有当滚动距离超过1px才同步
-                if (Math.abs(scrollXValue - lastScrollX.current) < 1) return
+                // 高频节流：10ms内只同步一次（100fps），更流畅
+                if (now - lastSyncTime.current < 10) return
                 
+                // 防止微小抖动
+                if (Math.abs(scrollXValue - lastScrollX.current) < 0.2) return
+                
+                lastSyncTime.current = now
                 lastScrollX.current = scrollXValue
                 setScrollX(scrollXValue)
                 
-                // 判断是否在边界（真正到达尽头时才显示）
+                // 判断是否在边界
                 const maxScrollX = dates.length * CELL_WIDTH - (width - ROOM_CELL_WIDTH)
                 setShowLeftArrow(scrollXValue <= 5)
                 setShowRightArrow(scrollXValue >= maxScrollX - 5)
                 
-                // 同步到内容区域
-                isScrollingProgrammatically.current = true
+                // 立即同步到内容区域
                 contentScrollRef.current?.scrollTo({ x: scrollXValue, animated: false })
-                
-                // 清除之前的定时器
-                if (scrollSyncTimeout.current) {
-                  clearTimeout(scrollSyncTimeout.current)
-                }
-                
-                // 短暂延迟后重置标志
-                scrollSyncTimeout.current = setTimeout(() => {
-                  isScrollingProgrammatically.current = false
-                }, 50)
               }}
             >
             <View style={styles.dateRowContent}>
@@ -1122,37 +1119,32 @@ export default function CalendarScreen() {
               ref={contentScrollRef}
                 horizontal
                 showsHorizontalScrollIndicator={false}
-              scrollEventThrottle={16}
+              scrollEventThrottle={1}
               onScroll={(event) => {
+                // 如果是程序化滚动，跳过
                 if (isScrollingProgrammatically.current) return
                 
                 const scrollXValue = event.nativeEvent.contentOffset.x
+                const now = Date.now()
                 
-                // 防止重复同步：只有当滚动距离超过1px才同步
-                if (Math.abs(scrollXValue - lastScrollX.current) < 1) return
+                // 高频节流：10ms内只同步一次（100fps），更流畅
+                if (now - lastSyncTime.current < 10) return
                 
+                // 防止微小抖动
+                if (Math.abs(scrollXValue - lastScrollX.current) < 0.2) return
+                
+                lastSyncTime.current = now
                 lastScrollX.current = scrollXValue
                 setScrollX(scrollXValue)
                 
-                // 判断是否在边界（真正到达尽头时才显示）
+                // 判断是否在边界
                 const maxScrollX = dates.length * CELL_WIDTH - (width - ROOM_CELL_WIDTH)
                 setShowLeftArrow(scrollXValue <= 5)
                 setShowRightArrow(scrollXValue >= maxScrollX - 5)
                 
-                // 同步到日期头部
-                isScrollingProgrammatically.current = true
+                // 立即同步到日期头部
                 dateHeaderScrollRef.current?.scrollTo({ x: scrollXValue, animated: false })
-                
-                // 清除之前的定时器
-                if (scrollSyncTimeout.current) {
-                  clearTimeout(scrollSyncTimeout.current)
-                }
-                
-                // 短暂延迟后重置标志
-                scrollSyncTimeout.current = setTimeout(() => {
-                  isScrollingProgrammatically.current = false
-                  }, 50)
-                }}
+              }}
               >
               <View style={styles.rightColumn}>
                 {displayRoomTypes.map(roomType => {
@@ -1253,16 +1245,24 @@ export default function CalendarScreen() {
                                   },
                                   // 今日列样式（放在最后，确保边框显示）
                                   isCurrentDay && {
-                                    backgroundColor: reservationGroup ? orderColor : 'rgba(227, 242, 253, 0.6)',
+                                    // 空房保持白色背景，有预订的显示订单颜色
+                                    backgroundColor: reservationGroup ? orderColor : 'white',
                                     borderLeftWidth: reservationGroup && !isFirstCell ? 3 : (isFirstCell ? 4 : 3),
-                                    borderLeftColor: reservationGroup && isFirstCell ? borderColor : '#1976d2',
+                                    borderLeftColor: reservationGroup && isFirstCell ? borderColor : '#2196F3',
                                     borderRightWidth: 3,
-                                    borderRightColor: '#1976d2',
-                                    // 添加半透明蓝色遮罩效果
+                                    borderRightColor: '#2196F3',
+                                    // 空房时添加淡淡的蓝色边框内阴影效果
+                                    ...(!reservationGroup && {
+                                      borderTopWidth: 0.5,
+                                      borderTopColor: '#E3F2FD',
+                                      borderBottomWidth: 0.5,
+                                      borderBottomColor: '#E3F2FD',
+                                    }),
+                                    // 有预订时的阴影效果
                                     ...(reservationGroup && {
-                                      shadowColor: '#1976d2',
+                                      shadowColor: '#2196F3',
                                       shadowOffset: { width: 0, height: 0 },
-                                      shadowOpacity: 0.3,
+                                      shadowOpacity: 0.2,
                                       shadowRadius: 0,
                                       elevation: 0,
                                     }),
@@ -1557,11 +1557,13 @@ const styles = StyleSheet.create({
     borderRightColor: '#e0e0e0',
   },
   todayDateCell: {
-    backgroundColor: '#BBDEFB', // 更深的蓝色背景
+    backgroundColor: '#E3F2FD', // 淡蓝色背景
+    borderBottomWidth: 3,
+    borderBottomColor: '#2196F3', // 更鲜艳的蓝色边框
     borderLeftWidth: 3,
-    borderLeftColor: '#1976d2',
+    borderLeftColor: '#2196F3',
     borderRightWidth: 3,
-    borderRightColor: '#1976d2',
+    borderRightColor: '#2196F3',
   },
   dateText: {
     fontSize: FontSizes.tiny, // 使用tiny字体，更紧凑
@@ -1570,16 +1572,18 @@ const styles = StyleSheet.create({
     marginBottom: 2, // 减小间距
   },
   todayDateText: {
-    color: '#1976d2',
+    color: '#1976D2', // 深蓝色文字
     fontWeight: 'bold',
+    fontSize: FontSizes.small * 1.05, // 稍微放大一点
   },
   availableText: {
     fontSize: FontSizes.tiny * 0.9, // 更小的字体
     color: '#666',
   },
   todayAvailableText: {
-    color: '#1976d2',
-    fontWeight: '600',
+    color: '#2196F3', // 鲜艳的蓝色
+    fontWeight: 'bold',
+    fontSize: FontSizes.tiny * 1.05, // 稍微放大
   },
   mainScrollView: {
     flex: 1,
@@ -1655,11 +1659,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffe0b2', // 默认颜色，会被订单颜色覆盖
   },
   todayStatusCell: {
-    backgroundColor: 'rgba(227, 242, 253, 0.5)', // 半透明蓝色背景
+    backgroundColor: 'white', // 今日空房保持白色，清晰显示
     borderLeftWidth: 3,
-    borderLeftColor: '#1976d2',
+    borderLeftColor: '#2196F3', // 使用更亮的蓝色
     borderRightWidth: 3,
-    borderRightColor: '#1976d2',
+    borderRightColor: '#2196F3',
+    borderTopWidth: 0.5,
+    borderTopColor: '#E3F2FD',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#E3F2FD',
   },
   reservationInfo: {
     flex: 1,

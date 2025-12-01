@@ -21,13 +21,13 @@ const updateNotificationHandler = async () => {
   } catch (error) {
     console.error('更新通知处理器失败:', error)
     // 默认配置
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-      }),
-    })
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+})
   }
 }
 

@@ -17,17 +17,7 @@ import { DateWheelPicker } from '../components/DateWheelPicker'
 import { useAppSelector, useAppDispatch } from '../store/hooks'
 import { deleteReservation, setRooms, setReservations, setRoomStatuses } from '../store/calendarSlice'
 import { dataService } from '../services/dataService'
-
-interface Reservation {
-  id: string
-  guestName: string
-  room: string
-  checkIn: string
-  checkOut: string
-  status: 'pending' | 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled'
-  totalAmount: number
-  guestPhone: string
-}
+import { Reservation } from '../store/types'
 
 interface ReservationCardProps {
   reservation: Reservation
@@ -36,37 +26,55 @@ interface ReservationCardProps {
 }
 
 function ReservationCard({ reservation, onPress, onDelete }: ReservationCardProps) {
+  // 从 Redux 获取房间列表来补充房间信息
+  const rooms = useAppSelector(state => state.calendar.rooms)
+  
+  // 根据 roomId 查找房间信息
+  const room = rooms.find(r => r.id === reservation.roomId)
+  const displayRoomType = reservation.roomType || room?.type || ''
+  const displayRoomNumber = reservation.roomNumber || room?.name || ''
   const getStatusColor = (status: string) => {
-    switch (status) {
+    // 转换为小写进行匹配
+    const statusLower = status?.toLowerCase() || ''
+    switch (statusLower) {
       case 'confirmed':
         return { bg: '#dcfce7', text: '#166534' }
       case 'pending':
         return { bg: '#fef3c7', text: '#92400e' }
+      case 'checked-in':
       case 'checked_in':
         return { bg: '#dbeafe', text: '#1e40af' }
+      case 'checked-out':
       case 'checked_out':
         return { bg: '#f3e8ff', text: '#7c3aed' }
       case 'cancelled':
         return { bg: '#fecaca', text: '#dc2626' }
       default:
+        console.warn('⚠️ [状态] 未知状态:', status)
         return { bg: '#f1f5f9', text: '#64748b' }
     }
   }
 
   const getStatusText = (status: string) => {
-    switch (status) {
+    // 转换为小写进行匹配
+    const statusLower = status?.toLowerCase() || ''
+    switch (statusLower) {
       case 'confirmed':
         return '已确认'
       case 'pending':
         return '待确认'
+      case 'checked-in':
       case 'checked_in':
         return '已入住'
+      case 'checked-out':
       case 'checked_out':
         return '已退房'
       case 'cancelled':
         return '已取消'
       default:
-        return status
+        // 如果遇到未知状态，打印日志并返回
+        console.warn('⚠️ [状态] 未知状态:', status)
+        return `未知(${status})`
     }
   }
 
@@ -90,15 +98,19 @@ function ReservationCard({ reservation, onPress, onDelete }: ReservationCardProp
       <View style={styles.cardContent}>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>房间:</Text>
-          <Text style={styles.infoValue}>{reservation.room}</Text>
+          <Text style={styles.infoValue}>
+            {displayRoomType && displayRoomNumber 
+              ? `${displayRoomType} - ${displayRoomNumber}` 
+              : displayRoomType || displayRoomNumber || '未分配'}
+          </Text>
         </View>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>入住:</Text>
-          <Text style={styles.infoValue}>{reservation.checkIn}</Text>
+          <Text style={styles.infoValue}>{reservation.checkInDate?.split('T')[0] || reservation.checkInDate}</Text>
         </View>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>退房:</Text>
-          <Text style={styles.infoValue}>{reservation.checkOut}</Text>
+          <Text style={styles.infoValue}>{reservation.checkOutDate?.split('T')[0] || reservation.checkOutDate}</Text>
         </View>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>手机:</Text>
@@ -111,8 +123,16 @@ function ReservationCard({ reservation, onPress, onDelete }: ReservationCardProp
           总金额: ¥{reservation.totalAmount.toLocaleString()}
         </Text>
         <View style={styles.cardActions}>
-          <Text style={styles.reservationId}>#{reservation.id}</Text>
-          {(reservation.status === 'cancelled' || reservation.status === 'checked_out') && (
+          <Text style={styles.reservationId}>
+            {reservation.createdAt ? new Date(reservation.createdAt).toLocaleString('zh-CN', { 
+              year: 'numeric', 
+              month: '2-digit', 
+              day: '2-digit', 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            }) : '未知时间'}
+          </Text>
+          {(reservation.status === 'cancelled' || reservation.status === 'checked-out') && (
             <TouchableOpacity
               style={styles.deleteButton}
               onPress={(e) => {
@@ -157,18 +177,18 @@ export default function ReservationsScreen() {
 
   const [startDateFilter, setStartDateFilter] = useState('')
   const [endDateFilter, setEndDateFilter] = useState('')
-  const [sortBy, setSortBy] = useState<'date' | 'amount'>('date')
+  const [sortBy, setSortBy] = useState<'checkInDate' | 'createdAt' | 'amount'>('createdAt')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
   const filters = [
     { id: 'all', name: '全部' },
+    { id: 'checkin-today', name: '今日入住' },
+    { id: 'checkout-today', name: '今日退房' },
     { id: 'pending', name: '待确认' },
     { id: 'confirmed', name: '已确认' },
     { id: 'checked-in', name: '已入住' },
     { id: 'checked-out', name: '已退房' },
     { id: 'cancelled', name: '已取消' },
-    { id: 'checkin-today', name: '今日入住' },
-    { id: 'checkout-today', name: '今日退房' },
   ]
 
   // 处理从首页传递过来的筛选参数
@@ -278,43 +298,24 @@ export default function ReservationsScreen() {
     }
   }
   
-  console.log('📋 [Reservations] Redux预订数据:', reduxReservations)
+  console.log('📋 [Reservations] Redux预订数据:', reduxReservations.length, '条')
   console.log('📋 [Reservations] Redux房间数据:', rooms.length, '个')
   
-  // 转换为页面所需的格式
-  const reservations: Reservation[] = reduxReservations.map((r: any) => {
-    // 从房间列表查找房间信息
-    const room = rooms.find(room => room.id === r.roomId)
-    const roomName = room?.name || r.roomNumber || r.room?.name || '未知房间'
-    const roomType = room?.type || r.room?.roomType || r.roomType || '未知房型'
-    
-    // 格式化日期
-    const formatDate = (dateStr: string) => {
-      try {
-        const date = new Date(dateStr)
-        const year = date.getFullYear()
-        const month = String(date.getMonth() + 1).padStart(2, '0')
-        const day = String(date.getDate()).padStart(2, '0')
-        return `${year}-${month}-${day}`
-      } catch {
-        return dateStr
-      }
-    }
-    
-    return {
-    id: r.id,
-      guestName: r.guestName || '未知',
-      room: `${roomName} - ${roomType}`,
-      checkIn: formatDate(r.checkInDate),
-      checkOut: formatDate(r.checkOutDate),
-      status: r.status === 'CONFIRMED' || r.status === 'confirmed' ? 'confirmed' : 
-              r.status === 'CHECKED_IN' || r.status === 'checked-in' ? 'checked_in' :
-              r.status === 'CHECKED_OUT' || r.status === 'checked-out' ? 'checked_out' :
-              r.status === 'CANCELLED' || r.status === 'cancelled' ? 'cancelled' : 'pending',
-      totalAmount: Number(r.totalAmount) || 0,
-      guestPhone: r.guestPhone || ''
-    }
-  })
+  // 调试：打印第一条预订的详细信息
+  if (reduxReservations.length > 0) {
+    const first = reduxReservations[0]
+    const firstRoom = rooms.find(r => r.id === first.roomId)
+    console.log('📋 [预订详情] 第一条预订:', {
+      status: first.status,
+      roomType: first.roomType,
+      roomNumber: first.roomNumber,
+      roomId: first.roomId,
+      '查找到的房间': firstRoom ? { type: firstRoom.type, name: firstRoom.name } : '未找到'
+    })
+  }
+  
+  // 直接使用 Redux 数据，不需要转换（Redux 数据已经是正确的 Reservation 类型）
+  const reservations: Reservation[] = reduxReservations
 
   const filteredReservations = useMemo(() => {
     const today = new Date().toISOString().split('T')[0]
@@ -323,7 +324,8 @@ export default function ReservationsScreen() {
       // 搜索过滤
       const matchesSearch = searchText === '' || 
         reservation.guestName.toLowerCase().includes(searchText.toLowerCase()) ||
-        reservation.room.toLowerCase().includes(searchText.toLowerCase()) ||
+        reservation.roomNumber.toLowerCase().includes(searchText.toLowerCase()) ||
+        reservation.roomType.toLowerCase().includes(searchText.toLowerCase()) ||
         reservation.id.toLowerCase().includes(searchText.toLowerCase()) ||
         reservation.guestPhone.includes(searchText)
       
@@ -333,13 +335,17 @@ export default function ReservationsScreen() {
         matchesFilter = true
       } else if (selectedFilter === 'checkin-today') {
         // 今日入住：入住日期是今天，且未取消
-        matchesFilter = reservation.checkIn === today && reservation.status !== 'cancelled'
+        const checkInDate = reservation.checkInDate.split('T')[0]
+        matchesFilter = checkInDate === today && reservation.status !== 'cancelled'
       } else if (selectedFilter === 'checkout-today') {
         // 今日退房：退房日期是今天，且未取消
-        matchesFilter = reservation.checkOut === today && reservation.status !== 'cancelled'
+        const checkOutDate = reservation.checkOutDate.split('T')[0]
+        matchesFilter = checkOutDate === today && reservation.status !== 'cancelled'
       } else if (selectedFilter === 'today') {
         // 今日：入住或退房日期是今天
-        matchesFilter = (reservation.checkIn === today || reservation.checkOut === today) && reservation.status !== 'cancelled'
+        const checkInDate = reservation.checkInDate.split('T')[0]
+        const checkOutDate = reservation.checkOutDate.split('T')[0]
+        matchesFilter = (checkInDate === today || checkOutDate === today) && reservation.status !== 'cancelled'
       } else {
         // 按状态筛选
         matchesFilter = reservation.status === selectedFilter
@@ -348,10 +354,12 @@ export default function ReservationsScreen() {
       // 日期范围过滤
       let matchesDateRange = true
       if (startDateFilter) {
-        matchesDateRange = matchesDateRange && reservation.checkIn >= startDateFilter
+        const checkInDate = reservation.checkInDate.split('T')[0]
+        matchesDateRange = matchesDateRange && checkInDate >= startDateFilter
       }
       if (endDateFilter) {
-        matchesDateRange = matchesDateRange && reservation.checkOut <= endDateFilter
+        const checkOutDate = reservation.checkOutDate.split('T')[0]
+        matchesDateRange = matchesDateRange && checkOutDate <= endDateFilter
       }
       
       return matchesSearch && matchesFilter && matchesDateRange
@@ -359,20 +367,56 @@ export default function ReservationsScreen() {
 
     // 排序
     filtered.sort((a, b) => {
-      if (sortBy === 'date') {
-        const comparison = a.checkIn.localeCompare(b.checkIn)
-        return sortOrder === 'asc' ? comparison : -comparison
-      } else {
-        const comparison = a.totalAmount - b.totalAmount
-        return sortOrder === 'asc' ? comparison : -comparison
+      let comparison = 0
+      
+      if (sortBy === 'checkInDate') {
+        // 按入住日期排序
+        comparison = a.checkInDate.localeCompare(b.checkInDate)
+      } else if (sortBy === 'createdAt') {
+        // 按创建日期排序
+        const aTime = a.createdAt || ''
+        const bTime = b.createdAt || ''
+        comparison = aTime.localeCompare(bTime)
+      } else if (sortBy === 'amount') {
+        // 按金额排序
+        comparison = a.totalAmount - b.totalAmount
       }
+      
+      // desc（降序）= 最新的/最大的在前，asc（升序）= 最旧的/最小的在前
+      return sortOrder === 'desc' ? -comparison : comparison
     })
 
     return filtered
   }, [reservations, searchText, selectedFilter, startDateFilter, endDateFilter, sortBy, sortOrder])
 
   const handleReservationPress = (id: string) => {
-    router.push(`/booking-details?id=${id}`)
+    // 查找预订详情
+    const reservation = reduxReservations.find(r => r.id === id)
+    if (!reservation) {
+      Alert.alert('错误', '找不到预订信息')
+      return
+    }
+
+    // 查找房间信息
+    const room = rooms.find(r => r.id === reservation.roomId)
+    
+    // 跳转到订单详情页面
+    router.push({
+      pathname: '/order-details',
+      params: {
+        orderId: reservation.orderId || reservation.id,
+        reservationId: reservation.id,
+        guestName: reservation.guestName,
+        guestPhone: reservation.guestPhone,
+        channel: reservation.channel,
+        checkInDate: reservation.checkInDate,
+        checkOutDate: reservation.checkOutDate,
+        roomType: reservation.roomType,
+        roomPrice: (reservation.roomPrice || 0).toString(),
+        nights: (reservation.nights || 0).toString(),
+        totalAmount: (reservation.totalAmount || 0).toString(),
+      }
+    })
   }
 
   const handleDeleteReservation = async (id: string) => {
@@ -486,24 +530,40 @@ export default function ReservationsScreen() {
       <View style={styles.advancedFilters}>
         <View style={styles.advancedFiltersRow}>
           <TouchableOpacity 
-            style={styles.sortButton}
-            onPress={() => setSortBy(sortBy === 'date' ? 'amount' : 'date')}
+            style={[styles.sortButton, sortBy === 'createdAt' && styles.sortButtonActive]}
+            onPress={() => setSortBy('createdAt')}
           >
-            <Text style={styles.sortButtonText}>
-              {sortBy === 'date' ? '按日期' : '按金额'}
+            <Text style={[styles.sortButtonText, sortBy === 'createdAt' && styles.sortButtonTextActive]}>
+              创建时间
             </Text>
           </TouchableOpacity>
           <TouchableOpacity 
-            style={styles.sortButton}
+            style={[styles.sortButton, sortBy === 'checkInDate' && styles.sortButtonActive]}
+            onPress={() => setSortBy('checkInDate')}
+          >
+            <Text style={[styles.sortButtonText, sortBy === 'checkInDate' && styles.sortButtonTextActive]}>
+              入住日期
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.sortButton, sortBy === 'amount' && styles.sortButtonActive]}
+            onPress={() => setSortBy('amount')}
+          >
+            <Text style={[styles.sortButtonText, sortBy === 'amount' && styles.sortButtonTextActive]}>
+              金额
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.sortOrderButton, sortOrder === 'desc' && styles.sortOrderButtonActive]}
             onPress={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
           >
-            <Text style={styles.sortButtonText}>
-              {sortOrder === 'asc' ? '升序 ↑' : '降序 ↓'}
+            <Text style={[styles.sortOrderButtonText, sortOrder === 'desc' && styles.sortOrderButtonTextActive]}>
+              {sortOrder === 'desc' ? '↓' : '↑'}
             </Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.resultCount}>
-          共 {filteredReservations.length} 条结果
+          共 {filteredReservations.length} 条结果 · {sortOrder === 'desc' ? '降序（新→旧/大→小）' : '升序（旧→新/小→大）'}
         </Text>
       </View>
 
@@ -873,24 +933,49 @@ const styles = StyleSheet.create({
   },
   advancedFiltersRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'flex-start',
-    gap: 12,
-    marginBottom: 8,
   },
   sortButton: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     backgroundColor: '#f1f5f9',
     borderRadius: 8,
+    marginRight: 8,
+  },
+  sortButtonActive: {
+    backgroundColor: '#6366f1',
   },
   sortButtonText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#64748b',
     fontWeight: '500',
   },
+  sortButtonTextActive: {
+    color: 'white',
+  },
+  sortOrderButton: {
+    width: 36,
+    height: 36,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sortOrderButtonActive: {
+    backgroundColor: '#6366f1',
+  },
+  sortOrderButtonText: {
+    fontSize: 18,
+    color: '#64748b',
+    fontWeight: 'bold',
+  },
+  sortOrderButtonTextActive: {
+    color: 'white',
+  },
   resultCount: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#9ca3af',
-    textAlign: 'center',
+    marginTop: 4,
   },
 }) 
