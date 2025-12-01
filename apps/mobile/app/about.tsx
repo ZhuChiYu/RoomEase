@@ -41,9 +41,9 @@ export default function AboutScreen() {
         {/* Logo和标题 */}
         <View style={styles.logoSection}>
           <View style={styles.logoContainer}>
-            <Text style={styles.logoText}>满客云</Text>
+            <Text style={styles.logoText}>客满云</Text>
           </View>
-          <Text style={styles.appName}>满客云</Text>
+          <Text style={styles.appName}>客满云</Text>
           <Text style={styles.appSubtitle}>KemanCloud</Text>
           <Text style={styles.version}>版本 1.0.0</Text>
         </View>
@@ -52,7 +52,7 @@ export default function AboutScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>产品介绍</Text>
           <Text style={styles.description}>
-            满客云是一款专业的酒店民宿管理解决方案，致力于帮助中小型酒店和民宿业主轻松管理日常运营。
+            客满云是一款专业的酒店民宿管理解决方案，致力于帮助中小型酒店和民宿业主轻松管理日常运营。
           </Text>
           <Text style={styles.description}>
             我们提供房态管理、预订管理、客户管理、财务管理等全方位功能，让您的经营更加高效便捷。
@@ -179,7 +179,7 @@ export default function AboutScreen() {
 
         {/* 版权信息 */}
         <View style={styles.copyrightSection}>
-          <Text style={styles.copyright}>© 2025 满客云团队</Text>
+          <Text style={styles.copyright}>© 2025 客满云团队</Text>
           <Text style={styles.copyright}>保留所有权利</Text>
         </View>
 

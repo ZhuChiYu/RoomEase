@@ -30,7 +30,7 @@ export default function HelpSupportScreen() {
   const tutorials: HelpItem[] = [
     {
       title: '📱 快速入门',
-      content: '了解如何快速开始使用满客云管理您的酒店或民宿。从创建房型、添加房间到接收第一个预订。',
+      content: '了解如何快速开始使用客满云管理您的酒店或民宿。从创建房型、添加房间到接收第一个预订。',
     },
     {
       title: '🏨 房态管理',
@@ -90,13 +90,13 @@ export default function HelpSupportScreen() {
   ]
 
   const handleEmailSupport = () => {
-    Linking.openURL('mailto:zhu.cy@outlook.com?subject=满客云技术支持').catch(err =>
+    Linking.openURL('mailto:zhu.cy@outlook.com?subject=客满云技术支持').catch(err =>
       Alert.alert('错误', '无法打开邮件应用')
     )
   }
 
   const handleEmailConsult = () => {
-    Linking.openURL('mailto:zhu.cy@outlook.com?subject=满客云使用咨询').catch(err =>
+    Linking.openURL('mailto:zhu.cy@outlook.com?subject=客满云使用咨询').catch(err =>
       Alert.alert('错误', '无法打开邮件应用')
     )
   }
@@ -113,7 +113,7 @@ export default function HelpSupportScreen() {
 
     // 通过邮件发送反馈
     const emailBody = `反馈类型：${feedbackData.type}\n\n反馈内容：\n${feedbackData.content}\n\n联系方式：${feedbackData.contact || '未提供'}`
-    const emailSubject = `满客云意见反馈 - ${feedbackData.type}`
+    const emailSubject = `客满云意见反馈 - ${feedbackData.type}`
     
     Linking.openURL(`mailto:zhu.cy@outlook.com?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`)
       .then(() => {

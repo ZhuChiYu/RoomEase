@@ -30,18 +30,18 @@ export default function PrivacyPolicyScreen() {
         </View>
 
         <Text style={styles.welcome}>
-          满客云隐私政策
+          客满云隐私政策
         </Text>
 
         <Text style={styles.intro}>
-          满客云团队（以下简称"我们"）非常重视用户的隐私保护。本隐私政策旨在向您说明我们如何收集、使用、存储和保护您的个人信息。请您仔细阅读本政策，以了解我们对您个人信息的处理方式。
+          客满云团队（以下简称"我们"）非常重视用户的隐私保护。本隐私政策旨在向您说明我们如何收集、使用、存储和保护您的个人信息。请您仔细阅读本政策，以了解我们对您个人信息的处理方式。
         </Text>
 
         {/* 第一条 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>一、我们收集的信息</Text>
           <Text style={styles.paragraph}>
-            为了向您提供满客云服务，我们可能会收集以下类型的信息：
+            为了向您提供客满云服务，我们可能会收集以下类型的信息：
           </Text>
           
           <Text style={styles.subTitle}>1.1 您主动提供的信息</Text>
@@ -268,7 +268,7 @@ export default function PrivacyPolicyScreen() {
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>满客云团队</Text>
+          <Text style={styles.footerText}>客满云团队</Text>
           <Text style={styles.footerText}>2025年1月</Text>
         </View>
 

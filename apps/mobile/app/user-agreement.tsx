@@ -30,18 +30,18 @@ export default function UserAgreementScreen() {
         </View>
 
         <Text style={styles.welcome}>
-          欢迎使用满客云！
+          欢迎使用客满云！
         </Text>
 
         <Text style={styles.intro}>
-          在使用满客云（以下简称"本服务"）之前，请您仔细阅读并充分理解本《用户协议》（以下简称"本协议"）。本协议是您与满客云团队（以下简称"我们"）之间关于使用本服务的法律协议。
+          在使用客满云（以下简称"本服务"）之前，请您仔细阅读并充分理解本《用户协议》（以下简称"本协议"）。本协议是您与客满云团队（以下简称"我们"）之间关于使用本服务的法律协议。
         </Text>
 
         {/* 第一条 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>一、协议的接受</Text>
           <Text style={styles.paragraph}>
-            1.1 当您注册成为满客云用户或使用本服务时，即表示您已充分阅读、理解并同意接受本协议的全部内容。
+            1.1 当您注册成为客满云用户或使用本服务时，即表示您已充分阅读、理解并同意接受本协议的全部内容。
           </Text>
           <Text style={styles.paragraph}>
             1.2 如果您不同意本协议的任何内容，或无法准确理解我们对条款的解释，请不要进行后续操作。
@@ -221,7 +221,7 @@ export default function UserAgreementScreen() {
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>满客云团队</Text>
+          <Text style={styles.footerText}>客满云团队</Text>
           <Text style={styles.footerText}>2025年1月</Text>
         </View>
 
