@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common'
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import * as bcrypt from 'bcryptjs'
 import { DatabaseService } from '../../services/database/database.service'
@@ -285,6 +285,63 @@ export class AuthService {
     return {
       message: '用户信息更新成功',
       user: updatedUser,
+    }
+  }
+
+  /**
+   * 注销账号
+   */
+  async deleteAccount(userId: string, tenantId: string) {
+    // 查找用户
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId, tenantId },
+    })
+
+    if (!user) {
+      throw new UnauthorizedException('用户不存在')
+    }
+
+    // 检查是否是租户的唯一用户
+    const tenantUsers = await this.prisma.user.findMany({
+      where: { tenantId },
+    })
+
+    if (tenantUsers.length === 1) {
+      // 如果是唯一用户，删除整个租户及其所有相关数据
+      try {
+        // 使用事务确保数据一致性
+        await this.prisma.$transaction(async (tx) => {
+          // 1. 删除所有预订
+          await tx.reservation.deleteMany({ where: { tenantId } })
+          
+          // 2. 删除所有房间
+          await tx.room.deleteMany({ where: { tenantId } })
+          
+          // 3. 删除所有房型
+          await tx.roomType.deleteMany({ where: { tenantId } })
+          
+          // 4. 删除所有物业
+          await tx.property.deleteMany({ where: { tenantId } })
+          
+          // 5. 删除用户
+          await tx.user.delete({ where: { id: userId } })
+          
+          // 6. 删除租户
+          await tx.tenant.delete({ where: { id: tenantId } })
+        })
+
+        return { message: '账号已成功注销，所有数据已删除' }
+      } catch (error) {
+        console.error('删除账号失败:', error)
+        throw new BadRequestException('账号注销失败，请联系客服')
+      }
+    } else {
+      // 如果不是唯一用户，只删除该用户
+      await this.prisma.user.delete({
+        where: { id: userId },
+      })
+
+      return { message: '账号已成功注销' }
     }
   }
 

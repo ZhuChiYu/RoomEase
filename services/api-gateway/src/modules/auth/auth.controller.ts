@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, UseGuards, Request, Patch } from '@nestjs/common'
+import { Controller, Post, Body, Get, UseGuards, Request, Patch, Delete } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger'
 import { AuthService } from './auth.service'
 import { LoginDto, LoginResponseDto } from './dto/login.dto'
@@ -94,5 +94,15 @@ export class AuthController {
       req.user.tenantId,
       updateProfileDto
     )
+  }
+
+  @Delete('account')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '注销账号' })
+  @ApiResponse({ status: 200, description: '账号已注销' })
+  @ApiResponse({ status: 401, description: '未授权' })
+  async deleteAccount(@Request() req: any) {
+    return this.authService.deleteAccount(req.user.id, req.user.tenantId)
   }
 }
