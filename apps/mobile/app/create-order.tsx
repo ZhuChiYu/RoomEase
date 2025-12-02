@@ -450,6 +450,18 @@ export default function CreateOrderScreen() {
             />
           </View>
 
+          <View style={styles.formItem}>
+            <Text style={styles.label}>身份证号</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="选填"
+              keyboardType="default"
+              value={formData.guestIdNumber}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, guestIdNumber: text }))}
+              maxLength={18}
+            />
+          </View>
+
           <TouchableOpacity 
             style={styles.formItem}
             onPress={() => setChannelModalVisible(true)}

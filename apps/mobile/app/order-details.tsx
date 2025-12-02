@@ -45,6 +45,7 @@ export default function OrderDetailsScreen() {
     reservationId, // 新增：预订ID（优先使用）
     guestName,
     guestPhone,
+    guestIdNumber,
     channel,
     checkInDate: rawCheckInDate,
     checkOutDate: rawCheckOutDate,
@@ -340,6 +341,7 @@ export default function OrderDetailsScreen() {
                     orderId,
                     guestName,
                     guestPhone,
+                    guestIdNumber: currentReservation?.guestIdNumber || guestIdNumber || '',
                     channel,
                     checkInDate,
                     checkOutDate,
@@ -450,6 +452,13 @@ export default function OrderDetailsScreen() {
               <Text style={styles.statusText}>{orderStatus}</Text>
             </View>
           </View>
+          
+          {guestIdNumber && (
+            <View style={styles.idNumberRow}>
+              <Text style={styles.idNumberLabel}>身份证号：</Text>
+              <Text style={styles.idNumberValue}>{guestIdNumber}</Text>
+            </View>
+          )}
           
           <View style={styles.actionButtons}>
             <TouchableOpacity style={styles.iconButton} onPress={handleSendSMS}>
@@ -755,6 +764,23 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.medium,
     fontWeight: '600',
     color: '#333',
+  },
+   idNumberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  idNumberLabel: {
+    fontSize: FontSizes.small,
+    color: '#666',
+  },
+  idNumberValue: {
+    fontSize: FontSizes.small,
+    color: '#333',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   statusBadge: {
     backgroundColor: '#4a90e2',

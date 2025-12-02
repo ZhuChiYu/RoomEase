@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "KemanCloud",
+    "name": "客满云",
     "slug": "kemancloud-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -19,9 +19,9 @@
       "bundleIdentifier": "com.kemancloud.mobile",
       "buildNumber": "1",
       "infoPlist": {
-        "NSCameraUsageDescription": "RoomEase需要访问相机以扫描证件",
-        "NSPhotoLibraryUsageDescription": "RoomEase需要访问相册以保存和选择图片",
-        "NSPhotoLibraryAddUsageDescription": "RoomEase需要保存图片到相册",
+        "NSCameraUsageDescription": "需要访问相机以扫描身份证和拍摄照片",
+        "NSPhotoLibraryUsageDescription": "需要访问相册以保存和选择图片",
+        "NSPhotoLibraryAddUsageDescription": "需要保存图片到相册",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSExceptionDomains": {

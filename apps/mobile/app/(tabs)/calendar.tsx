@@ -175,6 +175,64 @@ export default function CalendarScreen() {
   const [isLoading, setIsLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   
+  // 空状态引导动画 - 多层动画效果
+  const fadeAnim = useRef(new Animated.Value(0)).current
+  const scaleAnim = useRef(new Animated.Value(0.8)).current
+  const slideUpAnim = useRef(new Animated.Value(50)).current
+  const iconBounceAnim = useRef(new Animated.Value(0)).current
+  const buttonScaleAnim = useRef(new Animated.Value(0.8)).current
+  
+  // 空状态动画效果 - 分层入场动画
+  useEffect(() => {
+    if (reduxRooms.length === 0 && !isLoading) {
+      // 重置动画
+      fadeAnim.setValue(0)
+      scaleAnim.setValue(0.8)
+      slideUpAnim.setValue(50)
+      iconBounceAnim.setValue(0)
+      buttonScaleAnim.setValue(0.8)
+      
+      // 启动分层入场动画
+      Animated.sequence([
+        // 第1步：整体淡入 (0-400ms)
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        // 第2步：内容上滑和缩放 (400-900ms)
+        Animated.parallel([
+          Animated.spring(scaleAnim, {
+            toValue: 1,
+            tension: 50,
+            friction: 7,
+            useNativeDriver: true,
+          }),
+          Animated.spring(slideUpAnim, {
+            toValue: 0,
+            tension: 40,
+            friction: 8,
+            useNativeDriver: true,
+          }),
+        ]),
+        // 第3步：图标弹跳 (900-1200ms)
+        Animated.spring(iconBounceAnim, {
+          toValue: 1,
+          tension: 100,
+          friction: 5,
+          useNativeDriver: true,
+        }),
+        // 第4步：按钮弹出 (1200-1500ms)
+        Animated.spring(buttonScaleAnim, {
+          toValue: 1,
+          tension: 80,
+          friction: 6,
+          useNativeDriver: true,
+        }),
+      ]).start()
+    }
+  }, [reduxRooms.length, isLoading])
+  
   // 按房型分组房间
   const roomsByType = useMemo(() => {
     return reduxRooms.reduce((acc, room) => {
@@ -327,6 +385,12 @@ export default function CalendarScreen() {
       ? Array.from(selectedRoomTypes)
       : Object.keys(roomsByType) as RoomType[]
     
+    // 安全检查：只保留有房间的房型
+    types = types.filter(roomType => {
+      const rooms = roomsByType[roomType]
+      return rooms && Array.isArray(rooms) && rooms.length > 0
+    })
+    
     if (!searchText.trim()) {
       return types
     }
@@ -335,7 +399,10 @@ export default function CalendarScreen() {
     
     // 过滤房型，只保留包含匹配房间的房型
     return types.filter(roomType => {
-      return roomsByType[roomType].some(room => {
+      const rooms = roomsByType[roomType]
+      if (!rooms || !Array.isArray(rooms)) return false
+      
+      return rooms.some(room => {
         // 匹配房间号
         if (room.name.toLowerCase().includes(search)) return true
         if (room.id.toLowerCase().includes(search)) return true
@@ -354,13 +421,19 @@ export default function CalendarScreen() {
 
   // 获取过滤后的房间
   const getFilteredRooms = (roomType: RoomType): Room[] => {
+    // 安全检查：确保房型存在且有房间
+    const rooms = roomsByType[roomType]
+    if (!rooms || !Array.isArray(rooms)) {
+      return []
+    }
+    
     if (!searchText.trim()) {
-      return roomsByType[roomType]
+      return rooms
     }
     
     const search = searchText.toLowerCase().trim()
     
-    return roomsByType[roomType].filter(room => {
+    return rooms.filter(room => {
       // 匹配房间号
       if (room.name.toLowerCase().includes(search)) return true
       if (room.id.toLowerCase().includes(search)) return true
@@ -866,9 +939,27 @@ export default function CalendarScreen() {
   // 处理筛选按钮
   const handleFilterPress = () => {
     if (Platform.OS === 'ios') {
-      // 动态生成选项：取消 + 所有房型 + 房型设置
-      const roomTypeNames = reduxRoomTypes.map(rt => rt.name)
-      const options = ['取消', ...roomTypeNames, '房型设置']
+      // 只显示有实际房间的房型
+      const availableRoomTypes = Object.keys(roomsByType).filter(roomType => {
+        const rooms = roomsByType[roomType]
+        return rooms && Array.isArray(rooms) && rooms.length > 0
+      })
+      
+      // 如果没有房间，直接跳转到房型设置
+      if (availableRoomTypes.length === 0) {
+        Alert.alert(
+          '提示',
+          '还没有房间，请先添加房型和房间',
+          [
+            { text: '取消', style: 'cancel' },
+            { text: '去添加', onPress: () => router.push('/room-type-settings') }
+          ]
+        )
+        return
+      }
+      
+      // 动态生成选项：取消 + 实际有房间的房型 + 房型设置
+      const options = ['取消', ...availableRoomTypes, '房型设置']
       
       ActionSheetIOS.showActionSheetWithOptions(
         {
@@ -884,7 +975,7 @@ export default function CalendarScreen() {
             router.push('/room-type-settings')
           } else {
             // 选择具体房型
-            const selectedType = roomTypeNames[buttonIndex - 1]
+            const selectedType = availableRoomTypes[buttonIndex - 1]
             setSelectedRoomTypes(new Set([selectedType]))
           }
         }
@@ -970,11 +1061,15 @@ export default function CalendarScreen() {
   }, [])
 
   const displayRoomTypes = getFilteredRoomTypes()
+  
+  // 检查是否没有房间（新账号空状态）
+  const hasNoRooms = reduxRooms.length === 0 && !isLoading
 
   return (
     <View style={styles.container}>
-      {/* 搜索栏 */}
-      <View style={styles.searchBar}>
+      {/* 搜索栏 - 只在有房间时显示 */}
+      {!hasNoRooms && (
+        <View style={styles.searchBar}>
         <View style={styles.searchInputContainer}>
           <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
@@ -1003,11 +1098,107 @@ export default function CalendarScreen() {
         </TouchableOpacity>
         <TouchableOpacity style={styles.filterBtn} onPress={handleFilterPress}>
           <Text style={styles.filterIcon}>☰</Text>
-             </TouchableOpacity>
+        </TouchableOpacity>
       </View>
+      )}
 
-      {/* 表格容器 */}
-      <View style={styles.tableContainer}>
+      {/* 空状态时直接显示引导界面，不显示日历表格 */}
+      {hasNoRooms ? (
+        <View style={styles.emptyStateFullContainer}>
+          <Animated.View style={[styles.emptyStateContent, {
+            opacity: fadeAnim,
+            transform: [
+              { translateY: slideUpAnim },
+              { scale: scaleAnim }
+            ]
+          }]}>
+            {/* 图标区域 - 带弹跳动画 */}
+            <Animated.View style={[styles.emptyStateIconContainer, {
+              transform: [
+                {
+                  scale: iconBounceAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.8, 1]
+                  })
+                },
+                {
+                  rotate: iconBounceAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['-5deg', '0deg']
+                  })
+                }
+              ]
+            }]}>
+              <Text style={styles.emptyStateIcon}>🏨</Text>
+            </Animated.View>
+            
+            <Text style={styles.emptyStateTitle}>欢迎使用客满云！</Text>
+            <View style={styles.emptyStateBadge}>
+              <Text style={styles.emptyStateBadgeText}>✨ 开始您的数字化管理之旅</Text>
+            </View>
+            <Text style={styles.emptyStateSubtitle}>
+              只需三步，快速设置您的第一个房型
+            </Text>
+            
+            {/* 步骤卡片 */}
+            <View style={styles.emptyStateSteps}>
+              {[
+                { num: '1', text: '点击下方按钮', icon: '👇' },
+                { num: '2', text: '添加房型（如：大床房）', icon: '🏠' },
+                { num: '3', text: '添加房间号', icon: '🔢' }
+              ].map((step, index) => (
+                <Animated.View 
+                  key={step.num}
+                  style={[styles.stepCard, {
+                    opacity: fadeAnim,
+                    transform: [
+                      {
+                        translateX: slideUpAnim.interpolate({
+                          inputRange: [0, 50],
+                          outputRange: [0, -20 * (index + 1)]
+                        })
+                      }
+                    ]
+                  }]}
+                >
+                  <View style={styles.stepNumberBadge}>
+                    <Text style={styles.stepNumberText}>{step.num}</Text>
+                  </View>
+                  <View style={styles.stepContent}>
+                    <Text style={styles.stepIcon}>{step.icon}</Text>
+                    <Text style={styles.stepText}>{step.text}</Text>
+                  </View>
+                </Animated.View>
+              ))}
+            </View>
+            
+            {/* 按钮 - 带弹性动画 */}
+            <Animated.View style={{ transform: [{ scale: buttonScaleAnim }] }}>
+              <TouchableOpacity 
+                style={styles.emptyStateButton}
+                onPress={() => router.push('/room-type-settings')}
+                activeOpacity={0.8}
+              >
+                <View style={styles.buttonGradient}>
+                  <Text style={styles.emptyStateButtonText}>开始设置房型</Text>
+                  <Text style={styles.emptyStateButtonIcon}>→</Text>
+                </View>
+              </TouchableOpacity>
+            </Animated.View>
+            
+            {/* 提示信息 */}
+            <View style={styles.emptyStateHintContainer}>
+              <Text style={styles.emptyStateHintIcon}>💡</Text>
+              <Text style={styles.emptyStateHint}>
+                支持创建多个房型，如大床房、标准间、豪华套房等
+              </Text>
+            </View>
+          </Animated.View>
+        </View>
+      ) : (
+        <>
+          {/* 表格容器 - 只在有房间时显示 */}
+          <View style={styles.tableContainer}>
         {/* 固定的左上角日期选择器 */}
         <View style={styles.fixedTopLeft}>
         <TouchableOpacity 
@@ -1304,146 +1495,165 @@ export default function CalendarScreen() {
             </ScrollView>
       </View>
 
-      {/* 左侧加载更多按钮 */}
-      {showLeftArrow && (
-        <TouchableOpacity 
-          style={styles.leftArrow}
-          onPress={loadPreviousDays}
+        {/* 左侧加载更多按钮 */}
+        {showLeftArrow && (
+          <TouchableOpacity 
+            style={styles.leftArrow}
+            onPress={loadPreviousDays}
+          >
+            <Text style={styles.arrowText}>←</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* 右侧加载更多按钮 */}
+        {showRightArrow && (
+          <TouchableOpacity 
+            style={styles.rightArrow}
+            onPress={loadNextDays}
+          >
+            <Text style={styles.arrowText}>→</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* 回到今日按钮 */}
+        {selectedCells.size === 0 && shouldShowTodayButton() && (
+          <TouchableOpacity
+            style={styles.todayButton}
+            onPress={handleBackToToday}
+          >
+            <Text style={styles.todayButtonText}>回到今日</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* 底部操作栏 */}
+        {selectedCells.size > 0 && (
+          <View style={styles.bottomActions}>
+            <View style={styles.actionButtonsRow}>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={handleClearSelection}
+              >
+                <Text style={styles.actionButtonText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionButton} onPress={() => {
+                Alert.alert('转脏房', '转脏房功能开发中')
+              }}>
+                <Text style={styles.actionButtonText}>转脏房</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionButton} onPress={() => {
+                // 获取第一个选中的房间
+                const firstCell = Array.from(selectedCells)[0]
+                if (firstCell) {
+                  const [roomId] = firstCell.split('-')
+                  router.push({
+                    pathname: '/close-room',
+                    params: { roomId, roomNumber: roomId }
+                  })
+                  setSelectedCells(new Set())
+                }
+              }}>
+                <Text style={styles.actionButtonText}>关房</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionButton} onPress={() => {
+                handleCreateOrder()
+              }}>
+                <Text style={styles.actionButtonText}>入住</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.primaryActionButton]}
+                onPress={() => handleCreateOrder()}
+              >
+                <Text style={[styles.actionButtonText, styles.primaryActionText]}>新增</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* 悬浮操作按钮 */}
+        {selectedCells.size === 0 && (
+          <TouchableOpacity 
+            style={styles.fabButton}
+            onPress={() => router.push('/create-order')}
+          >
+            <Text style={styles.fabIcon}>+</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* 日期选择器 */}
+        <DateWheelPicker
+          visible={datePickerVisible}
+          onClose={() => setDatePickerVisible(false)}
+          onSelect={handleDateSelect}
+          initialDate={selectedDate.toISOString().split('T')[0]}
+          title="请选择日期"
+        />
+
+        {/* Android 筛选弹窗 */}
+        <Modal
+          visible={filterModalVisible}
+          transparent
+          animationType="none"
+          onRequestClose={() => setFilterModalVisible(false)}
         >
-          <Text style={styles.arrowText}>←</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* 右侧加载更多按钮 */}
-      {showRightArrow && (
-        <TouchableOpacity 
-          style={styles.rightArrow}
-          onPress={loadNextDays}
-        >
-          <Text style={styles.arrowText}>→</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* 回到今日按钮 */}
-      {selectedCells.size === 0 && shouldShowTodayButton() && (
-                 <TouchableOpacity
-          style={styles.todayButton}
-          onPress={handleBackToToday}
-                 >
-          <Text style={styles.todayButtonText}>回到今日</Text>
-                 </TouchableOpacity>
-               )}
-
-      {/* 底部操作栏 */}
-      {selectedCells.size > 0 && (
-        <View style={styles.bottomActions}>
-          <View style={styles.actionButtonsRow}>
-               <TouchableOpacity
-              style={styles.actionButton}
-              onPress={handleClearSelection}
-            >
-              <Text style={styles.actionButtonText}>取消</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton} onPress={() => {
-              Alert.alert('转脏房', '转脏房功能开发中')
-            }}>
-              <Text style={styles.actionButtonText}>转脏房</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton} onPress={() => {
-              // 获取第一个选中的房间
-              const firstCell = Array.from(selectedCells)[0]
-              if (firstCell) {
-                const [roomId] = firstCell.split('-')
-                router.push({
-                  pathname: '/close-room',
-                  params: { roomId, roomNumber: roomId }
+          <TouchableOpacity 
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setFilterModalVisible(false)}
+          >
+            <View style={styles.filterSheet}>
+              <Text style={styles.filterTitle}>筛选</Text>
+              
+              {/* 只显示有实际房间的房型 */}
+              {reduxRoomTypes
+                .filter(roomType => {
+                  const rooms = roomsByType[roomType.name]
+                  return rooms && Array.isArray(rooms) && rooms.length > 0
                 })
-                setSelectedCells(new Set())
+                .map(roomType => (
+                  <TouchableOpacity
+                    key={roomType.id}
+                    style={styles.filterOption}
+                    onPress={() => {
+                      setSelectedRoomTypes(new Set([roomType.name]))
+                      setFilterModalVisible(false)
+                    }}
+                  >
+                    <Text style={styles.filterOptionText}>{roomType.name}</Text>
+                  </TouchableOpacity>
+                ))
               }
-            }}>
-              <Text style={styles.actionButtonText}>关房</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton} onPress={() => {
-              handleCreateOrder()
-            }}>
-              <Text style={styles.actionButtonText}>入住</Text>
-               </TouchableOpacity>
-               <TouchableOpacity
-              style={[styles.actionButton, styles.primaryActionButton]}
-              onPress={() => handleCreateOrder()}
-               >
-              <Text style={[styles.actionButtonText, styles.primaryActionText]}>新增</Text>
-               </TouchableOpacity>
-             </View>
-           </View>
-      )}
-
-      {/* 悬浮操作按钮 */}
-      {selectedCells.size === 0 && (
-        <TouchableOpacity 
-          style={styles.fabButton}
-          onPress={() => router.push('/create-order')}
-        >
-          <Text style={styles.fabIcon}>+</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* 日期选择器 */}
-      <DateWheelPicker
-         visible={datePickerVisible}
-         onClose={() => setDatePickerVisible(false)}
-        onSelect={handleDateSelect}
-        initialDate={selectedDate.toISOString().split('T')[0]}
-        title="请选择日期"
-      />
-
-      {/* Android 筛选弹窗 */}
-      <Modal
-        visible={filterModalVisible}
-        transparent
-        animationType="none"
-        onRequestClose={() => setFilterModalVisible(false)}
-      >
-        <TouchableOpacity 
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setFilterModalVisible(false)}
-        >
-          <View style={styles.filterSheet}>
-            <Text style={styles.filterTitle}>筛选</Text>
-            
-            {reduxRoomTypes.map(roomType => (
-                 <TouchableOpacity
-                key={roomType.id}
+              
+              {/* 如果没有房间，显示提示 */}
+              {Object.keys(roomsByType).filter(roomType => {
+                const rooms = roomsByType[roomType]
+                return rooms && Array.isArray(rooms) && rooms.length > 0
+              }).length === 0 && (
+                <View style={styles.filterEmptyHint}>
+                  <Text style={styles.filterEmptyText}>还没有房间，请先添加房型</Text>
+                </View>
+              )}
+              
+              <TouchableOpacity
                 style={styles.filterOption}
                 onPress={() => {
-                  setSelectedRoomTypes(new Set([roomType.name]))
                   setFilterModalVisible(false)
+                  router.push('/room-type-settings')
                 }}
               >
-                <Text style={styles.filterOptionText}>{roomType.name}</Text>
-                 </TouchableOpacity>
-            ))}
-            
-               <TouchableOpacity
-              style={styles.filterOption}
-              onPress={() => {
-                setFilterModalVisible(false)
-                router.push('/room-type-settings')
-              }}
-            >
-              <Text style={styles.filterOptionText}>房型设置</Text>
-               </TouchableOpacity>
-            
-               <TouchableOpacity
-              style={styles.filterCancelButton}
-              onPress={() => setFilterModalVisible(false)}
-               >
-              <Text style={styles.filterCancelText}>取消</Text>
-               </TouchableOpacity>
-             </View>
-        </TouchableOpacity>
-       </Modal>
+                <Text style={styles.filterOptionText}>房型设置</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.filterCancelButton}
+                onPress={() => setFilterModalVisible(false)}
+              >
+                <Text style={styles.filterCancelText}>取消</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+        </>
+      )}
 
       {/* 加载遮罩 */}
       {isLoading && (
@@ -1860,6 +2070,176 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.medium,
     color: '#999',
     textAlign: 'center',
+  },
+  filterEmptyHint: {
+    paddingVertical: Spacings.xxl,
+    alignItems: 'center',
+  },
+  filterEmptyText: {
+    fontSize: FontSizes.medium,
+    color: '#9ca3af',
+    textAlign: 'center',
+  },
+  // 空状态样式 - 全新设计
+  emptyStateFullContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f0f4ff',
+    paddingHorizontal: Spacings.xl,
+    paddingVertical: Spacings.xxl,
+  },
+  emptyStateContent: {
+    alignItems: 'center',
+    maxWidth: 400,
+    width: '100%',
+  },
+  emptyStateIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'white',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacings.xl,
+    shadowColor: '#6366f1',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  emptyStateIcon: {
+    fontSize: 56,
+  },
+  emptyStateTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#1f2937',
+    marginBottom: Spacings.sm,
+    textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+  emptyStateBadge: {
+    backgroundColor: 'rgba(99, 102, 241, 0.12)',
+    paddingHorizontal: Spacings.lg,
+    paddingVertical: Spacings.xs,
+    borderRadius: 20,
+    marginBottom: Spacings.md,
+  },
+  emptyStateBadgeText: {
+    fontSize: FontSizes.small,
+    fontWeight: '600',
+    color: '#6366f1',
+  },
+  emptyStateSubtitle: {
+    fontSize: FontSizes.medium,
+    color: '#6b7280',
+    marginBottom: Spacings.xxl,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  emptyStateSteps: {
+    width: '100%',
+    marginBottom: Spacings.xxl,
+    paddingHorizontal: Spacings.sm,
+  },
+  stepCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: Spacings.lg,
+    marginBottom: Spacings.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.1)',
+  },
+  stepNumberBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#6366f1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: Spacings.md,
+    shadowColor: '#6366f1',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  stepNumberText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: 'white',
+  },
+  stepContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stepIcon: {
+    fontSize: 20,
+    marginRight: Spacings.sm,
+  },
+  stepText: {
+    fontSize: FontSizes.medium,
+    color: '#374151',
+    fontWeight: '500',
+    flex: 1,
+  },
+  emptyStateButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#6366f1',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+    marginBottom: Spacings.lg,
+  },
+  buttonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#6366f1',
+    paddingVertical: 18,
+    paddingHorizontal: 36,
+  },
+  emptyStateButtonText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: 'white',
+    marginRight: Spacings.sm,
+    letterSpacing: 0.5,
+  },
+  emptyStateButtonIcon: {
+    fontSize: 20,
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  emptyStateHintContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(251, 191, 36, 0.15)',
+    paddingHorizontal: Spacings.lg,
+    paddingVertical: Spacings.md,
+    borderRadius: 12,
+    maxWidth: '90%',
+  },
+  emptyStateHintIcon: {
+    fontSize: 18,
+    marginRight: Spacings.sm,
+  },
+  emptyStateHint: {
+    fontSize: FontSizes.small,
+    color: '#92400e',
+    lineHeight: 20,
+    flex: 1,
   },
   loadingOverlay: {
     position: 'absolute',

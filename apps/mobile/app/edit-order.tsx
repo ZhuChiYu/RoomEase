@@ -46,6 +46,7 @@ export default function EditOrderScreen() {
   const [formData, setFormData] = useState({
     guestName: (params.guestName as string) || '',
     guestPhone: (params.guestPhone as string) || '',
+    guestIdNumber: (params.guestIdNumber as string) || '',
     channel: (params.channel as string) || '自来客',
     checkInDate: formatDate((params.checkInDate as string) || ''),
     checkOutDate: formatDate((params.checkOutDate as string) || ''),
@@ -202,6 +203,7 @@ export default function EditOrderScreen() {
       const updateData: any = {
         guestName: formData.guestName,
         guestPhone: formData.guestPhone,
+        guestIdNumber: formData.guestIdNumber || undefined,
         source: formData.channel,
         checkInDate: formData.checkInDate,
         checkOutDate: formData.checkOutDate,
@@ -328,6 +330,18 @@ export default function EditOrderScreen() {
               keyboardType="phone-pad"
               value={formData.guestPhone}
               onChangeText={(text) => setFormData(prev => ({ ...prev, guestPhone: text }))}
+            />
+          </View>
+
+          <View style={styles.formItem}>
+            <Text style={styles.label}>身份证号</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="选填"
+              keyboardType="default"
+              value={formData.guestIdNumber}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, guestIdNumber: text }))}
+              maxLength={18}
             />
           </View>
 

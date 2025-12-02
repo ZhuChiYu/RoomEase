@@ -565,13 +565,37 @@ export default function HomeScreen() {
       >
         {/* 页面头部 */}
         <View style={styles.header}>
-          <Text style={styles.greeting}>
-            {getGreeting()}
-            {userInfo.name ? ` ${userInfo.name}` : ''}
-          </Text>
-          <Text style={styles.subtitle}>
-            {userInfo.hotelName || '客满云酒店民宿管理系统'}
-          </Text>
+          <View>
+            <Text style={styles.greeting}>
+              {getGreeting()}
+              {userInfo.name ? ` ${userInfo.name}` : ''}
+            </Text>
+            <Text style={styles.subtitle}>
+              {userInfo.hotelName || '客满云酒店民宿管理系统'}
+            </Text>
+          </View>
+        </View>
+
+        {/* 快速录入入口 */}
+        <View style={styles.quickEntryContainer}>
+          <TouchableOpacity
+            style={styles.quickEntryBanner}
+            onPress={() => router.push('/camera/id-card-scan')}
+            activeOpacity={0.85}
+          >
+            <View style={styles.quickEntryBannerLeft}>
+              <View style={styles.quickEntryBannerIcon}>
+                <Text style={styles.quickEntryBannerEmoji}>📸</Text>
+              </View>
+              <View style={styles.quickEntryBannerText}>
+                <Text style={styles.quickEntryBannerTitle}>快速录入</Text>
+                <Text style={styles.quickEntryBannerDesc}>扫描身份证 · 一键入住</Text>
+              </View>
+            </View>
+            <View style={styles.quickEntryBannerArrow}>
+              <Text style={styles.quickEntryBannerArrowText}>开始扫描 ›</Text>
+            </View>
+          </TouchableOpacity>
         </View>
 
         {/* KPI 卡片 */}
@@ -898,7 +922,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     padding: Spacings.lg,
+    paddingBottom: Spacings.md,
     backgroundColor: '#6366f1',
   },
   greeting: {
@@ -1020,13 +1048,86 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.normal,
     color: '#999',
   },
+  quickEntryContainer: {
+    paddingHorizontal: Spacings.lg,
+    marginTop: Spacings.md,
+    marginBottom: Spacings.md,
+  },
+  quickEntryBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'white',
+    borderRadius: ComponentSizes.borderRadiusLarge,
+    padding: Spacings.lg,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  quickEntryBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  quickEntryBannerIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#f0f4ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: Spacings.md,
+  },
+  quickEntryBannerEmoji: {
+    fontSize: 28,
+  },
+  quickEntryBannerText: {
+    flex: 1,
+  },
+  quickEntryBannerTitle: {
+    fontSize: FontSizes.large,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 4,
+  },
+  quickEntryBannerDesc: {
+    fontSize: FontSizes.small,
+    color: '#64748b',
+  },
+  quickEntryBannerArrow: {
+    paddingHorizontal: Spacings.md,
+    paddingVertical: Spacings.sm,
+    backgroundColor: '#6366f1',
+    borderRadius: ComponentSizes.borderRadiusMedium,
+  },
+  quickEntryBannerArrowText: {
+    fontSize: FontSizes.small,
+    color: 'white',
+    fontWeight: '600',
+  },
   reservationItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: Spacings.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    backgroundColor: 'white',
+    marginBottom: Spacings.sm,
+    borderRadius: ComponentSizes.borderRadiusMedium,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   reservationInfo: {
     flex: 1,

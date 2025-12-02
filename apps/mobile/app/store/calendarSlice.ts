@@ -9,6 +9,9 @@ const getLocalDateString = (date: Date): string => {
   return `${year}-${month}-${day}`
 }
 
+// 初始化房型配置为空（将从房间数据自动生成或从API加载）
+const initialRoomTypes: RoomTypeConfig[] = []
+
 // 初始化为空数据，所有数据从云端API加载
 const initialState: CalendarState = {
   rooms: [], // 从云端API加载
