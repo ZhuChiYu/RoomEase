@@ -4,12 +4,12 @@
     "slug": "kemancloud-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/splash.png",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "resizeMode": "cover",
+      "backgroundColor": "#6366f1"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -18,6 +18,11 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.kemancloud.mobile",
       "buildNumber": "1",
+      "splash": {
+        "image": "./assets/splash.png",
+        "resizeMode": "cover",
+        "backgroundColor": "#6366f1"
+      },
       "infoPlist": {
         "NSCameraUsageDescription": "需要访问相机以扫描身份证和拍摄照片",
         "NSPhotoLibraryUsageDescription": "需要访问相册以保存和选择图片",

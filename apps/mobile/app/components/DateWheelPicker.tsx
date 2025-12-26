@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
 import {
   View,
   Text,
@@ -38,74 +38,82 @@ export function DateWheelPicker({
   const yearScrollRef = useRef<ScrollView>(null)
   const monthScrollRef = useRef<ScrollView>(null)
   const dayScrollRef = useRef<ScrollView>(null)
+  
+  // 跟踪是否需要滚动到初始位置
+  const shouldScrollToInitial = useRef(false)
 
-  // 生成年份选项（当前年份前后5年）
-  const generateYears = () => {
-    const years = []
+  // 使用 useMemo 缓存数组，避免不必要的重新生成
+  const years = useMemo(() => {
+    const yearsList = []
     for (let i = currentDate.getFullYear() - 5; i <= currentDate.getFullYear() + 5; i++) {
-      years.push(i)
+      yearsList.push(i)
     }
-    return years
-  }
+    return yearsList
+  }, [])
 
-  // 生成月份选项
-  const generateMonths = () => {
+  const months = useMemo(() => {
     return Array.from({ length: 12 }, (_, i) => i + 1)
-  }
+  }, [])
 
-  // 生成日期选项
-  const generateDays = () => {
+  const days = useMemo(() => {
     const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate()
     return Array.from({ length: daysInMonth }, (_, i) => i + 1)
-  }
+  }, [selectedYear, selectedMonth])
+  
+  // 当月份改变时，检查并调整选中的日期
+  useEffect(() => {
+    const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate()
+    if (selectedDay > daysInMonth) {
+      setSelectedDay(daysInMonth)
+    }
+  }, [selectedYear, selectedMonth])
 
-  const years = generateYears()
-  const months = generateMonths()
-  const days = generateDays()
-
-  // 滚动到选中的项
-  const scrollToSelected = () => {
-    setTimeout(() => {
-      // 滚动到选中的年份
-      const yearIndex = years.indexOf(selectedYear)
-      if (yearIndex !== -1 && yearScrollRef.current) {
-        yearScrollRef.current.scrollTo({
-          y: yearIndex * ITEM_HEIGHT,
-          animated: false,
-        })
-      }
-
-      // 滚动到选中的月份
-      const monthIndex = months.indexOf(selectedMonth)
-      if (monthIndex !== -1 && monthScrollRef.current) {
-        monthScrollRef.current.scrollTo({
-          y: monthIndex * ITEM_HEIGHT,
-          animated: false,
-        })
-      }
-
-      // 滚动到选中的日期
-      const dayIndex = days.indexOf(selectedDay)
-      if (dayIndex !== -1 && dayScrollRef.current) {
-        dayScrollRef.current.scrollTo({
-          y: dayIndex * ITEM_HEIGHT,
-          animated: false,
-        })
-      }
-    }, 100)
-  }
-
-  // 当弹窗打开或 initialDate 改变时，滚动到选中位置
+  // 当弹窗打开或 initialDate 改变时，更新选中的日期
   useEffect(() => {
     if (visible) {
-      // 更新选中的日期
       const newInitDate = initialDate ? new Date(initialDate) : currentDate
       setSelectedYear(newInitDate.getFullYear())
       setSelectedMonth(newInitDate.getMonth() + 1)
       setSelectedDay(newInitDate.getDate())
-      scrollToSelected()
+      shouldScrollToInitial.current = true
     }
   }, [visible, initialDate])
+
+  // 只在打开时滚动到初始位置
+  useEffect(() => {
+    if (visible && shouldScrollToInitial.current) {
+      setTimeout(() => {
+        // 滚动到选中的年份
+        const yearIndex = years.indexOf(selectedYear)
+        if (yearIndex !== -1 && yearScrollRef.current) {
+          yearScrollRef.current.scrollTo({
+            y: yearIndex * ITEM_HEIGHT,
+            animated: false,
+          })
+        }
+
+        // 滚动到选中的月份
+        const monthIndex = months.indexOf(selectedMonth)
+        if (monthIndex !== -1 && monthScrollRef.current) {
+          monthScrollRef.current.scrollTo({
+            y: monthIndex * ITEM_HEIGHT,
+            animated: false,
+          })
+        }
+
+        // 滚动到选中的日期
+        const dayIndex = days.indexOf(selectedDay)
+        if (dayIndex !== -1 && dayScrollRef.current) {
+          dayScrollRef.current.scrollTo({
+            y: dayIndex * ITEM_HEIGHT,
+            animated: false,
+          })
+        }
+        
+        shouldScrollToInitial.current = false
+      }, 150)
+    }
+  }, [visible, selectedYear, selectedMonth, selectedDay])
 
   const handleConfirm = () => {
     const formattedDate = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${selectedDay.toString().padStart(2, '0')}`
@@ -127,15 +135,33 @@ export function DateWheelPicker({
           style={styles.wheel}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.wheelContent}
+          snapToInterval={ITEM_HEIGHT}
+          decelerationRate="fast"
+          onScroll={(event) => {
+            const offsetY = event.nativeEvent.contentOffset.y
+            const index = Math.round(offsetY / ITEM_HEIGHT)
+            const item = items[index]
+            if (item && item !== selectedValue) {
+              onValueChange(item)
+            }
+          }}
+          scrollEventThrottle={16}
         >
           {items.map((item) => (
             <TouchableOpacity
               key={item}
-              style={[
-                styles.wheelItem,
-                selectedValue === item && styles.selectedWheelItem
-              ]}
-              onPress={() => onValueChange(item)}
+              style={styles.wheelItem}
+              onPress={() => {
+                onValueChange(item)
+                // 自动滚动到选中项
+                const itemIndex = items.indexOf(item)
+                if (itemIndex !== -1 && scrollRef.current) {
+                  scrollRef.current.scrollTo({
+                    y: itemIndex * ITEM_HEIGHT,
+                    animated: true,
+                  })
+                }
+              }}
             >
               <Text
                 style={[
@@ -180,10 +206,14 @@ export function DateWheelPicker({
           </View>
 
           {/* 滚轮选择器 */}
-          <View style={styles.wheelPickerContainer}>
-            {renderWheelPicker(years, selectedYear, setSelectedYear, '年', yearScrollRef)}
-            {renderWheelPicker(months, selectedMonth, setSelectedMonth, '月', monthScrollRef)}
-            {renderWheelPicker(days, selectedDay, setSelectedDay, '日', dayScrollRef)}
+          <View style={styles.wheelPickerWrapper}>
+            <View style={styles.wheelPickerContainer}>
+              {renderWheelPicker(years, selectedYear, setSelectedYear, '年', yearScrollRef)}
+              {renderWheelPicker(months, selectedMonth, setSelectedMonth, '月', monthScrollRef)}
+              {renderWheelPicker(days, selectedDay, setSelectedDay, '日', dayScrollRef)}
+            </View>
+            {/* 固定的选中指示器 - 覆盖所有滚轮 */}
+            <View style={styles.globalSelectedIndicator} pointerEvents="none" />
           </View>
         </View>
       </View>
@@ -237,6 +267,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#6366f1',
   },
+  wheelPickerWrapper: {
+    position: 'relative',
+    height: 200,
+  },
   wheelPickerContainer: {
     flexDirection: 'row',
     height: 200,
@@ -250,24 +284,33 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   wheelContent: {
-    paddingVertical: 60,
+    paddingVertical: (200 - ITEM_HEIGHT) / 2, // 让第一个和最后一个项目都能滚动到中间
   },
   wheelItem: {
     height: ITEM_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 8,
   },
-  selectedWheelItem: {
+  globalSelectedIndicator: {
+    position: 'absolute',
+    top: (200 - ITEM_HEIGHT) / 2, // 固定在容器中间
+    left: 20,
+    right: 20,
+    height: ITEM_HEIGHT,
     backgroundColor: '#6366f1',
+    borderRadius: 8,
+    opacity: 0.15,
+    borderWidth: 2,
+    borderColor: '#6366f1',
   },
   wheelItemText: {
     fontSize: 16,
     color: '#64748b',
   },
   selectedWheelItemText: {
-    color: 'white',
+    color: '#6366f1',
     fontWeight: 'bold',
+    fontSize: 18,
   },
 })
 

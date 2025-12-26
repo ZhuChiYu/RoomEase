@@ -326,9 +326,9 @@ export default function HomeScreen() {
   // 最近的预订（显示最近创建的或今日及近期入住的订单）
   const recentReservations = useMemo(() => {
     const today = getLocalDateString()
-    const threeDaysAgo = new Date()
-    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3)
-    const threeDaysAgoStr = getLocalDateString(threeDaysAgo)
+    const sevenDaysAgo = new Date()
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+    const sevenDaysAgoStr = getLocalDateString(sevenDaysAgo)
     
     // 格式化日期为 YYYY-MM-DD
     const formatDate = (dateStr: string) => {
@@ -348,9 +348,9 @@ export default function HomeScreen() {
         // 显示：未取消的订单 且 (入住日期在最近3天到未来 或 最近创建的)
         if (r.status === 'cancelled' || r.status === 'CANCELLED') return false
         const checkInDate = formatDate(r.checkInDate)
-        const isRecentCheckIn = checkInDate >= threeDaysAgoStr
+        const isRecentCheckIn = checkInDate >= sevenDaysAgoStr
         const createdAt = r.createdAt ? new Date(r.createdAt) : new Date()
-        const isRecentCreated = createdAt >= threeDaysAgo
+        const isRecentCreated = createdAt >= sevenDaysAgo
         return isRecentCheckIn || isRecentCreated
       })
       .sort((a: any, b: any) => {
@@ -565,7 +565,7 @@ export default function HomeScreen() {
       >
         {/* 页面头部 */}
         <View style={styles.header}>
-          <View>
+          <View style={styles.headerLeft}>
             <Text style={styles.greeting}>
               {getGreeting()}
               {userInfo.name ? ` ${userInfo.name}` : ''}
@@ -574,28 +574,27 @@ export default function HomeScreen() {
               {userInfo.hotelName || '客满云酒店民宿管理系统'}
             </Text>
           </View>
-        </View>
-
-        {/* 快速录入入口 */}
-        <View style={styles.quickEntryContainer}>
-          <TouchableOpacity
-            style={styles.quickEntryBanner}
-            onPress={() => router.push('/camera/id-card-scan')}
-            activeOpacity={0.85}
-          >
-            <View style={styles.quickEntryBannerLeft}>
-              <View style={styles.quickEntryBannerIcon}>
-                <Text style={styles.quickEntryBannerEmoji}>📸</Text>
-              </View>
-              <View style={styles.quickEntryBannerText}>
-                <Text style={styles.quickEntryBannerTitle}>快速录入</Text>
-                <Text style={styles.quickEntryBannerDesc}>扫描身份证 · 一键入住</Text>
-              </View>
-            </View>
-            <View style={styles.quickEntryBannerArrow}>
-              <Text style={styles.quickEntryBannerArrowText}>开始扫描 ›</Text>
-            </View>
-          </TouchableOpacity>
+          
+          {/* 快速操作按钮 */}
+          <View style={styles.quickActions}>
+            <TouchableOpacity
+              style={styles.quickActionButton}
+              onPress={() => router.push('/camera/id-card-scan')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.quickActionIcon}>🪪</Text>
+              <Text style={styles.quickActionText}>身份证录入</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.quickActionButton}
+              onPress={() => router.push('/order-scan')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.quickActionIcon}>📱</Text>
+              <Text style={styles.quickActionText}>订单识别</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* KPI 卡片 */}
@@ -929,6 +928,28 @@ const styles = StyleSheet.create({
     paddingBottom: Spacings.md,
     backgroundColor: '#6366f1',
   },
+  headerLeft: {
+    flex: 1,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginLeft: 12,
+  },
+  quickActionButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 60,
+  },
+  quickActionIcon: {
+    fontSize: 28,
+    marginBottom: 4,
+  },
+  quickActionText: {
+    fontSize: 11,
+    color: 'white',
+    fontWeight: '500',
+  },
   greeting: {
     fontSize: FontSizes.xlarge,
     fontWeight: 'bold',
@@ -1047,70 +1068,6 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: FontSizes.normal,
     color: '#999',
-  },
-  quickEntryContainer: {
-    paddingHorizontal: Spacings.lg,
-    marginTop: Spacings.md,
-    marginBottom: Spacings.md,
-  },
-  quickEntryBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'white',
-    borderRadius: ComponentSizes.borderRadiusLarge,
-    padding: Spacings.lg,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
-  },
-  quickEntryBannerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  quickEntryBannerIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#f0f4ff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: Spacings.md,
-  },
-  quickEntryBannerEmoji: {
-    fontSize: 28,
-  },
-  quickEntryBannerText: {
-    flex: 1,
-  },
-  quickEntryBannerTitle: {
-    fontSize: FontSizes.large,
-    fontWeight: '600',
-    color: '#1e293b',
-    marginBottom: 4,
-  },
-  quickEntryBannerDesc: {
-    fontSize: FontSizes.small,
-    color: '#64748b',
-  },
-  quickEntryBannerArrow: {
-    paddingHorizontal: Spacings.md,
-    paddingVertical: Spacings.sm,
-    backgroundColor: '#6366f1',
-    borderRadius: ComponentSizes.borderRadiusMedium,
-  },
-  quickEntryBannerArrowText: {
-    fontSize: FontSizes.small,
-    color: 'white',
-    fontWeight: '600',
   },
   reservationItem: {
     flexDirection: 'row',

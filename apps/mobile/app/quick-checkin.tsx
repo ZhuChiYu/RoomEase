@@ -18,6 +18,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router'
 import { Stack } from 'expo-router'
 import { DateWheelPicker } from './components/DateWheelPicker'
+import { NightsWheelPicker } from './components/NightsWheelPicker'
 import { useAppSelector } from './store/hooks'
 import { dataService } from './services'
 import { ocrService } from './services/ocrService'
@@ -38,26 +39,51 @@ export default function QuickCheckinScreen() {
 
   // 表单数据
   const [formData, setFormData] = useState({
-    name: (params.name as string) || '',
-    idNumber: (params.idNumber as string) || '',
+    name: (params.name as string) || (params.guestName as string) || '',
+    idNumber: (params.idNumber as string) || (params.guestIdNumber as string) || '',
     gender: (params.gender as string) || '男',
     nationality: (params.nationality as string) || '汉',
     birthDate: (params.birthDate as string) || '',
     address: (params.address as string) || '',
-    phone: '',
+    phone: (params.guestPhone as string) || '',
   })
 
   // 预订信息
   const tomorrow = new Date()
   tomorrow.setDate(tomorrow.getDate() + 1)
   
+  // 解析订单识别传来的日期
+  const parseOrderDate = (dateStr: string): string => {
+    if (!dateStr) return ''
+    try {
+      // 处理格式：2025年12月5日 或 12月5日
+      const yearMatch = dateStr.match(/(\d{4})年/)
+      const monthMatch = dateStr.match(/(\d{1,2})月/)
+      const dayMatch = dateStr.match(/(\d{1,2})日/)
+      
+      if (monthMatch && dayMatch) {
+        const year = yearMatch ? yearMatch[1] : new Date().getFullYear().toString()
+        const month = monthMatch[1].padStart(2, '0')
+        const day = dayMatch[1].padStart(2, '0')
+        return `${year}-${month}-${day}`
+      }
+    } catch (error) {
+      console.error('日期解析失败:', error)
+    }
+    return ''
+  }
+  
+  const initialCheckInDate = parseOrderDate(params.checkInDate as string) || getLocalDateString()
+  const initialCheckOutDate = parseOrderDate(params.checkOutDate as string) || getLocalDateString(tomorrow)
+  const initialPrice = params.totalPrice ? parseFloat(params.totalPrice as string) : 0
+  
   const [bookingData, setBookingData] = useState({
-    checkInDate: getLocalDateString(),
-    checkOutDate: getLocalDateString(tomorrow),
+    checkInDate: initialCheckInDate,
+    checkOutDate: initialCheckOutDate,
     roomId: '',
     roomName: '请选择房间',
     roomType: '',
-    price: 0,
+    price: initialPrice,
   })
 
   // UI状态
@@ -68,6 +94,7 @@ export default function QuickCheckinScreen() {
   const [editingPrice, setEditingPrice] = useState('')
   const [expandedRoomTypes, setExpandedRoomTypes] = useState<Set<string>>(new Set())
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [nightsModalVisible, setNightsModalVisible] = useState(false) // 入住时长选择弹窗
 
   // 验证身份证号
   useEffect(() => {
@@ -170,6 +197,23 @@ export default function QuickCheckinScreen() {
     }
   }
 
+  // 打开入住时长选择
+  const handleNightsPress = () => {
+    setNightsModalVisible(true)
+  }
+
+  // 选择入住时长
+  const handleSelectNights = (nights: number) => {
+    const checkInDate = new Date(bookingData.checkInDate)
+    const checkOutDate = new Date(checkInDate)
+    checkOutDate.setDate(checkInDate.getDate() + nights)
+    
+    setBookingData(prev => ({
+      ...prev,
+      checkOutDate: getLocalDateString(checkOutDate)
+    }))
+  }
+
   // 重新扫描身份证
   const handleRescan = () => {
     router.replace('/camera/id-card-scan')
@@ -182,22 +226,7 @@ export default function QuickCheckinScreen() {
       Alert.alert('提示', '请输入客人姓名')
       return
     }
-    if (!formData.phone.trim()) {
-      Alert.alert('提示', '请输入手机号')
-      return
-    }
-    if (formData.phone.length !== 11) {
-      Alert.alert('提示', '请输入正确的手机号')
-      return
-    }
-    if (!formData.idNumber.trim()) {
-      Alert.alert('提示', '请输入身份证号')
-      return
-    }
-    if (!ocrService.validateIDNumber(formData.idNumber)) {
-      Alert.alert('提示', '身份证号格式不正确')
-      return
-    }
+    // 手机号和身份证号改为非必填，不验证格式
     if (!bookingData.roomId) {
       Alert.alert('提示', '请选择房间')
       return
@@ -298,13 +327,25 @@ export default function QuickCheckinScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <Text style={styles.backButton}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>快速录入</Text>
+        <Text style={styles.headerTitle}>身份证录入</Text>
         <TouchableOpacity onPress={handleRescan}>
           <Text style={styles.rescanButton}>重新扫描</Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* 订单来源提示 */}
+        {params.platform && (
+          <View style={styles.platformBanner}>
+            <Text style={styles.platformBannerIcon}>
+              {params.platform === '美团' ? '🟡' : params.platform === '途家' ? '🔵' : '🟠'}
+            </Text>
+            <Text style={styles.platformBannerText}>
+              已从 {params.platform} 订单识别信息，请核对后提交
+            </Text>
+          </View>
+        )}
+
         {/* 客人信息 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>客人信息</Text>
@@ -320,10 +361,10 @@ export default function QuickCheckinScreen() {
           </View>
 
           <View style={styles.formItem}>
-            <Text style={styles.label}>身份证号 *</Text>
+            <Text style={styles.label}>身份证号</Text>
             <TextInput
               style={styles.input}
-              placeholder="请输入身份证号"
+              placeholder="请输入身份证号（选填）"
               value={formData.idNumber}
               onChangeText={(text) => setFormData(prev => ({ ...prev, idNumber: text }))}
               maxLength={18}
@@ -331,10 +372,10 @@ export default function QuickCheckinScreen() {
           </View>
 
           <View style={styles.formItem}>
-            <Text style={styles.label}>手机号 *</Text>
+            <Text style={styles.label}>手机号</Text>
             <TextInput
               style={styles.input}
-              placeholder="请输入手机号"
+              placeholder="请输入手机号（选填）"
               keyboardType="phone-pad"
               value={formData.phone}
               onChangeText={(text) => setFormData(prev => ({ ...prev, phone: text }))}
@@ -413,10 +454,16 @@ export default function QuickCheckinScreen() {
             </View>
           </TouchableOpacity>
 
-          <View style={styles.formItem}>
+          <TouchableOpacity
+            style={styles.formItem}
+            onPress={handleNightsPress}
+          >
             <Text style={styles.label}>入住时长</Text>
-            <Text style={styles.displayText}>{calculateNights()}晚</Text>
-          </View>
+            <View style={styles.selectContainer}>
+              <Text style={styles.selectText}>{calculateNights()}晚</Text>
+              <Text style={styles.arrow}>›</Text>
+            </View>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.formItem}
@@ -547,6 +594,15 @@ export default function QuickCheckinScreen() {
         </TouchableOpacity>
       </Modal>
 
+      {/* 入住时长选择弹窗 */}
+      <NightsWheelPicker
+        visible={nightsModalVisible}
+        onClose={() => setNightsModalVisible(false)}
+        onSelect={handleSelectNights}
+        initialNights={calculateNights()}
+        title="选择入住时长"
+      />
+
       {/* 价格编辑弹窗 */}
       <Modal
         visible={priceModalVisible}
@@ -628,11 +684,36 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: 'white',
+    flex: 1,
+    textAlign: 'center',
   },
   rescanButton: {
     fontSize: 14,
     color: 'white',
     fontWeight: '600',
+  },
+  platformBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#4CAF50',
+  },
+  platformBannerIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  platformBannerText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#2E7D32',
+    fontWeight: '500',
   },
   content: {
     flex: 1,

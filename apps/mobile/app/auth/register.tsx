@@ -10,6 +10,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
@@ -99,7 +100,11 @@ export default function RegisterScreen() {
         >
           {/* Logo 和标题 */}
           <View style={styles.header}>
-            <Text style={styles.logo}>🏨</Text>
+            <Image 
+              source={require('../../assets/splash.png')} 
+              style={styles.logo}
+              resizeMode="contain"
+            />
             <Text style={styles.title}>创建账号</Text>
             <Text style={styles.subtitle}>开始使用客满云管理系统</Text>
           </View>
@@ -214,7 +219,8 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   logo: {
-    fontSize: 64,
+    width: 100,
+    height: 100,
     marginBottom: 16,
   },
   title: {

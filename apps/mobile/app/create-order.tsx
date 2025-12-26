@@ -16,6 +16,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useRouter, useLocalSearchParams } from 'expo-router'
 import { DateWheelPicker } from './components/DateWheelPicker'
+import { NightsWheelPicker } from './components/NightsWheelPicker'
 import { useAppDispatch, useAppSelector } from './store/hooks'
 import { setReservations, setRoomStatuses } from './store/calendarSlice'
 import type { Reservation } from './store/types'
@@ -78,6 +79,7 @@ export default function CreateOrderScreen() {
   const [editingPrice, setEditingPrice] = useState('')
   const [expandedRoomTypes, setExpandedRoomTypes] = useState<Set<string>>(new Set())
   const [isSubmitting, setIsSubmitting] = useState(false) // 添加loading状态
+  const [nightsModalVisible, setNightsModalVisible] = useState(false) // 入住时长选择弹窗
   
   // 当打开房间选择时，默认展开所有房型
   useEffect(() => {
@@ -237,6 +239,25 @@ export default function CreateOrderScreen() {
     setPriceModalVisible(true)
   }
 
+  // 打开入住时长选择
+  const handleNightsPress = (roomIndex: number) => {
+    setEditingRoomIndex(roomIndex)
+    setNightsModalVisible(true)
+  }
+
+  // 选择入住时长
+  const handleSelectNights = (nights: number) => {
+    if (editingRoomIndex === null) return
+    
+    const updatedRooms = [...rooms]
+    const checkInDate = new Date(updatedRooms[editingRoomIndex].checkInDate)
+    const checkOutDate = new Date(checkInDate)
+    checkOutDate.setDate(checkInDate.getDate() + nights)
+    
+    updatedRooms[editingRoomIndex].checkOutDate = getLocalDateString(checkOutDate)
+    setRooms(updatedRooms)
+  }
+
   // 确认房费修改
   const handlePriceConfirm = () => {
     if (editingRoomIndex === null) return
@@ -267,10 +288,7 @@ export default function CreateOrderScreen() {
       Alert.alert('提示', '请输入客人姓名')
       return
     }
-    if (!formData.guestPhone.trim()) {
-      Alert.alert('提示', '请输入手机号')
-      return
-    }
+    // 手机号和身份证号改为非必填，不验证格式
     if (rooms.length === 0) {
       Alert.alert('提示', '请选择房间')
       return
@@ -396,10 +414,7 @@ export default function CreateOrderScreen() {
       Alert.alert('提示', '请输入客人姓名')
       return
     }
-    if (!formData.guestPhone.trim()) {
-      Alert.alert('提示', '请输入手机号')
-      return
-    }
+    // 手机号改为非必填，不验证格式
     
     Alert.alert(
       '入住成功',
@@ -443,7 +458,7 @@ export default function CreateOrderScreen() {
             <Text style={styles.label}>手机</Text>
             <TextInput
               style={styles.input}
-              placeholder="请输入手机号"
+              placeholder="请输入手机号（选填）"
               keyboardType="phone-pad"
               value={formData.guestPhone}
               onChangeText={(text) => setFormData(prev => ({ ...prev, guestPhone: text }))}
@@ -454,7 +469,7 @@ export default function CreateOrderScreen() {
             <Text style={styles.label}>身份证号</Text>
             <TextInput
               style={styles.input}
-              placeholder="选填"
+              placeholder="请输入身份证号（选填）"
               keyboardType="default"
               value={formData.guestIdNumber}
               onChangeText={(text) => setFormData(prev => ({ ...prev, guestIdNumber: text }))}
@@ -501,13 +516,16 @@ export default function CreateOrderScreen() {
               </View>
             </TouchableOpacity>
 
-            <View style={styles.formItem}>
+            <TouchableOpacity 
+              style={styles.formItem}
+              onPress={() => handleNightsPress(index)}
+            >
               <Text style={styles.label}>入住时长</Text>
               <View style={styles.selectContainer}>
                 <Text style={styles.selectText}>{calculateNights(room.checkInDate, room.checkOutDate)}晚</Text>
                 <Text style={styles.arrow}>›</Text>
               </View>
-            </View>
+            </TouchableOpacity>
 
             <TouchableOpacity 
               style={styles.formItem}
@@ -714,6 +732,15 @@ export default function CreateOrderScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      {/* 入住时长选择弹窗 */}
+      <NightsWheelPicker
+        visible={nightsModalVisible}
+        onClose={() => setNightsModalVisible(false)}
+        onSelect={handleSelectNights}
+        initialNights={editingRoomIndex !== null ? calculateNights(rooms[editingRoomIndex].checkInDate, rooms[editingRoomIndex].checkOutDate) : 1}
+        title="选择入住时长"
+      />
 
       {/* 房费编辑弹窗 */}
       <Modal

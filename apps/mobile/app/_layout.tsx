@@ -199,6 +199,26 @@ export default function RootLayout() {
             }} 
           />
           <Stack.Screen 
+            name="camera/id-card-scan" 
+            options={{ 
+              headerShown: false,
+              presentation: 'modal',
+              animation: 'none'
+            }} 
+          />
+          <Stack.Screen 
+            name="order-scan" 
+            options={{ 
+              headerShown: false
+            }} 
+          />
+          <Stack.Screen 
+            name="quick-checkin" 
+            options={{ 
+              headerShown: false
+            }} 
+          />
+          <Stack.Screen 
             name="create-order" 
             options={{ 
               headerShown: false

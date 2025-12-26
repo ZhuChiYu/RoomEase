@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
@@ -171,7 +172,11 @@ export default function LoginScreen() {
         >
           {/* Logo 和标题 */}
           <View style={styles.header}>
-            <Text style={styles.logo}>🏨</Text>
+            <Image 
+              source={require('../../assets/splash.png')} 
+              style={styles.logo}
+              resizeMode="contain"
+            />
             <Text style={styles.title}>客满云</Text>
             <Text style={styles.subtitle}>酒店民宿管理系统</Text>
           </View>
@@ -329,7 +334,8 @@ const styles = StyleSheet.create({
     marginBottom: Spacings.xxxl,
   },
   logo: {
-    fontSize: FontSizes.giant,
+    width: 100,
+    height: 100,
     marginBottom: Spacings.lg,
   },
   title: {
