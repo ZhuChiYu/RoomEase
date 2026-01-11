@@ -45,11 +45,14 @@ function DraggableRoomRow({
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const [showActions, setShowActions] = useState(false);
+  const [isDraggingLocal, setIsDraggingLocal] = useState(false);
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, gestureState) => {
+        // 如果正在拖拽，不响应左滑
+        if (isDragging) return false;
         // 只有横向滑动超过10px才开始响应
         return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
       },
@@ -90,26 +93,28 @@ function DraggableRoomRow({
   return (
     <View style={styles.roomRowContainer}>
       {/* 背景操作按钮 */}
-      <View style={styles.actionsContainer}>
-        <TouchableOpacity 
-          style={[styles.actionButton, styles.editButton]}
-          onPress={() => {
-            closeActions();
-            onEdit(room.id);
-          }}
-        >
-          <Text style={styles.actionButtonText}>编辑</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.actionButton, styles.deleteButton]}
-          onPress={() => {
-            closeActions();
-            onDelete(room.id);
-          }}
-        >
-          <Text style={styles.actionButtonText}>删除</Text>
-        </TouchableOpacity>
-      </View>
+      {showActions && (
+        <View style={styles.actionsContainer}>
+          <TouchableOpacity 
+            style={[styles.swipeActionButton, styles.swipeEditButton]}
+            onPress={() => {
+              closeActions();
+              onEdit(room.id);
+            }}
+          >
+            <Text style={styles.actionButtonText}>编辑</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.swipeActionButton, styles.swipeDeleteButton]}
+            onPress={() => {
+              closeActions();
+              onDelete(room.id);
+            }}
+          >
+            <Text style={styles.actionButtonText}>删除</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* 可滑动的内容 */}
       <Animated.View
@@ -122,8 +127,15 @@ function DraggableRoomRow({
       >
         <View style={styles.roomRowLeft}>
           <TouchableOpacity 
-            onLongPress={onLongPress}
-            onPressOut={onPressOut}
+            onLongPress={() => {
+              setIsDraggingLocal(true);
+              closeActions(); // 关闭左滑菜单
+              onLongPress();
+            }}
+            onPressOut={() => {
+              setIsDraggingLocal(false);
+              onPressOut();
+            }}
             style={styles.dragHandle}
             delayLongPress={200}
           >
@@ -256,11 +268,17 @@ export default function EditRoomTypeScreen() {
       const newOrder = currentRooms.map(r => r.id);
       setRoomOrder(newOrder);
       
-      const newVisibility: Record<string, boolean> = {};
-      currentRooms.forEach(room => {
-        newVisibility[room.id] = room.isVisible !== undefined ? room.isVisible : true;
+      // 只初始化新增房间的可见性，保留已有房间的状态
+      setRoomVisibility(prev => {
+        const updated = { ...prev };
+        currentRooms.forEach(room => {
+          // 只为新房间设置初始可见性
+          if (!(room.id in updated)) {
+            updated[room.id] = room.isVisible !== undefined ? room.isVisible : true;
+          }
+        });
+        return updated;
       });
-      setRoomVisibility(newVisibility);
     }
   }, [currentRooms.length]); // 只在房间数量变化时重新初始化
 
@@ -571,18 +589,27 @@ export default function EditRoomTypeScreen() {
           }
         }
         
-        // 保存可见性
+        // 保存可见性（仅更新已修改的）
+        const visibilityUpdates: Array<{ id: string; isVisible: boolean }> = [];
         for (const room of orderedRooms) {
           if (isBackendRoom(room.id)) {
-            const visibility = roomVisibility[room.id];
-            if (visibility !== undefined && visibility !== room.isVisible) {
-              try {
-                await dataService.rooms.updateVisibility(room.id, visibility);
-                console.log('✅ 房间可见性已保存:', room.id, visibility);
-              } catch (error) {
-                console.error('❌ 保存房间可见性失败:', room.id, error);
-              }
+            const currentVisibility = roomVisibility[room.id];
+            // 只有当用户明确修改了可见性，且与当前值不同时才更新
+            if (currentVisibility !== undefined && currentVisibility !== room.isVisible) {
+              visibilityUpdates.push({ id: room.id, isVisible: currentVisibility });
             }
+          }
+        }
+        
+        console.log('🔄 需要更新可见性的房间数量:', visibilityUpdates.length);
+        
+        // 批量更新可见性
+        for (const update of visibilityUpdates) {
+          try {
+            await dataService.rooms.updateVisibility(update.id, update.isVisible);
+            console.log('✅ 房间可见性已保存:', update.id, update.isVisible);
+          } catch (error) {
+            console.error('❌ 保存房间可见性失败:', update.id, error);
           }
         }
       }
@@ -916,16 +943,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  actionButton: {
+  swipeActionButton: {
     width: 75,
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  editButton: {
+  swipeEditButton: {
     backgroundColor: '#1890ff',
   },
-  deleteButton: {
+  swipeDeleteButton: {
     backgroundColor: '#ff4d4f',
   },
   actionButtonText: {

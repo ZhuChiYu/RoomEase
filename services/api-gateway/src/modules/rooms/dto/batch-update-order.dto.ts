@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger'
 import { IsArray, ValidateNested, IsString, IsNumber } from 'class-validator'
 import { Type } from 'class-transformer'
 
-class RoomOrderUpdate {
+export class RoomOrderUpdate {
   @ApiProperty({ example: 'room-id-123' })
   @IsString()
   id: string
