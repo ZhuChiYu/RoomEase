@@ -233,9 +233,13 @@ export default function CalendarScreen() {
     }
   }, [reduxRooms.length, isLoading])
   
-  // 按房型分组房间
+  // 按房型分组房间（只包含可见的房间，并按sortOrder排序）
   const roomsByType = useMemo(() => {
-    return reduxRooms.reduce((acc, room) => {
+    const visibleRooms = reduxRooms
+      .filter(room => room.isVisible !== false)
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+    
+    return visibleRooms.reduce((acc, room) => {
       if (!acc[room.type]) {
         acc[room.type] = []
       }
@@ -244,8 +248,12 @@ export default function CalendarScreen() {
     }, {} as { [key in RoomType]: Room[] })
   }, [reduxRooms])
   
-  // 所有房间列表
-  const allRooms = reduxRooms
+  // 所有可见房间列表（按sortOrder排序）
+  const allRooms = useMemo(() => {
+    return reduxRooms
+      .filter(room => room.isVisible !== false)
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+  }, [reduxRooms])
   
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -266,14 +274,26 @@ export default function CalendarScreen() {
     const safeReservations = Array.isArray(reduxReservations) ? reduxReservations : []
     const safeRoomStatuses = Array.isArray(reduxRoomStatuses) ? reduxRoomStatuses : []
     
+    // 过滤出可见的房间并按sortOrder排序
+    const visibleRooms = safeRooms
+      .filter(room => room.isVisible !== false) // 只显示isVisible不为false的房间
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)) // 按sortOrder排序
+    
     console.log('📅 [Calendar] Redux数据:', {
-      rooms: safeRooms.length,
+      totalRooms: safeRooms.length,
+      visibleRooms: visibleRooms.length,
       reservations: safeReservations.length,
       roomStatuses: safeRoomStatuses.length
     })
     
-    if (safeRooms.length > 0) {
-      console.log('📅 [Calendar] 房间列表:', safeRooms.map(r => ({ id: r.id, name: r.name, type: r.type })))
+    if (visibleRooms.length > 0) {
+      console.log('📅 [Calendar] 可见房间列表:', visibleRooms.map(r => ({ 
+        id: r.id, 
+        name: r.name, 
+        type: r.type,
+        sortOrder: r.sortOrder,
+        isVisible: r.isVisible 
+      })))
     }
     
     if (safeReservations.length > 0) {
@@ -309,7 +329,7 @@ export default function CalendarScreen() {
       // 为每个房间检查房态
       const rooms: DateData['rooms'] = {}
       
-      safeRooms.forEach(room => {
+      visibleRooms.forEach(room => {
         // 检查是否有房态记录（关房、脏房等）
         const roomStatus = safeRoomStatuses.find(
           rs => rs.roomId === room.id && rs.date === dateStr

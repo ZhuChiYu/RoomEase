@@ -292,6 +292,11 @@ const calendarSlice = createSlice({
         state.roomTypes.push(action.payload)
       }
     },
+    
+    // 设置房型列表
+    setRoomTypes: (state, action: PayloadAction<RoomTypeConfig[]>) => {
+      state.roomTypes = action.payload
+    },
 
     // 删除房型
     deleteRoomType: (state, action: PayloadAction<string>) => {
@@ -389,6 +394,7 @@ export const {
   addRoomType,
   updateRooms,
   setRooms,
+  setRoomTypes,
   setReservations,
   setRoomStatuses,
   setRoomDirty,

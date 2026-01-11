@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { DatabaseService } from '../../services/database/database.service'
 import { CreateRoomDto } from './dto/create-room.dto'
 import { UpdateRoomDto } from './dto/update-room.dto'
+import { BatchUpdateOrderDto } from './dto/batch-update-order.dto'
 
 @Injectable()
 export class RoomsService {
@@ -63,7 +64,10 @@ export class RoomsService {
       include: {
         property: true,
       },
-      orderBy: { code: 'asc' },
+      orderBy: [
+        { sortOrder: 'asc' },
+        { code: 'asc' }
+      ],
     })
   }
 
@@ -193,6 +197,38 @@ export class RoomsService {
       reservations,
       blockedDates: overrides.filter(o => o.isBlocked),
     }
+  }
+
+  /**
+   * 批量更新房间顺序
+   */
+  async batchUpdateOrder(tenantId: string, batchUpdateOrderDto: BatchUpdateOrderDto) {
+    const { updates } = batchUpdateOrderDto
+
+    // 验证所有房间都属于该租户
+    const roomIds = updates.map(u => u.id)
+    const rooms = await this.prisma.room.findMany({
+      where: {
+        id: { in: roomIds },
+        property: { tenantId }
+      }
+    })
+
+    if (rooms.length !== roomIds.length) {
+      throw new NotFoundException('部分房间不存在或无权访问')
+    }
+
+    // 使用事务批量更新
+    await this.prisma.$transaction(
+      updates.map(update =>
+        this.prisma.room.update({
+          where: { id: update.id },
+          data: { sortOrder: update.sortOrder }
+        })
+      )
+    )
+
+    return { success: true, updated: updates.length }
   }
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,140 @@ import {
   Alert,
   Platform,
   StatusBar,
+  Animated,
+  PanResponder,
+  Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useAppDispatch, useAppSelector } from './store/hooks';
 import { saveRoomType, deleteRoomType as deleteRoomTypeAction, addRoomsToType, deleteRoom, setRooms } from './store/calendarSlice';
-import type { RoomType } from './store/types';
+import type { RoomType, Room } from './store/types';
 import { dataService } from './services/dataService';
 import { authService } from './services/authService';
+
+// 可拖拽的房间行组件
+function DraggableRoomRow({ 
+  room, 
+  index,
+  isVisible = true,
+  onToggleVisibility,
+  onDelete, 
+  onEdit, 
+  onLongPress,
+  onPressOut,
+  isDragging,
+}: { 
+  room: Room; 
+  index: number;
+  isVisible?: boolean;
+  onToggleVisibility: (roomId: string, visible: boolean) => void;
+  onDelete: (roomId: string) => void; 
+  onEdit: (roomId: string) => void; 
+  onLongPress: () => void;
+  onPressOut: () => void;
+  isDragging: boolean;
+}) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const [showActions, setShowActions] = useState(false);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // 只有横向滑动超过10px才开始响应
+        return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+      },
+      onPanResponderMove: (_, gestureState) => {
+        // 只允许向左滑动，最多滑动150px
+        const newValue = Math.min(0, Math.max(-150, gestureState.dx));
+        translateX.setValue(newValue);
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dx < -50) {
+          // 滑动超过50px，展开操作按钮
+          Animated.spring(translateX, {
+            toValue: -150,
+            useNativeDriver: true,
+          }).start();
+          setShowActions(true);
+        } else {
+          // 否则回弹
+          Animated.spring(translateX, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+          setShowActions(false);
+        }
+      },
+    })
+  ).current;
+
+  // 关闭操作按钮
+  const closeActions = () => {
+    Animated.spring(translateX, {
+      toValue: 0,
+      useNativeDriver: true,
+    }).start();
+    setShowActions(false);
+  };
+
+  return (
+    <View style={styles.roomRowContainer}>
+      {/* 背景操作按钮 */}
+      <View style={styles.actionsContainer}>
+        <TouchableOpacity 
+          style={[styles.actionButton, styles.editButton]}
+          onPress={() => {
+            closeActions();
+            onEdit(room.id);
+          }}
+        >
+          <Text style={styles.actionButtonText}>编辑</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.actionButton, styles.deleteButton]}
+          onPress={() => {
+            closeActions();
+            onDelete(room.id);
+          }}
+        >
+          <Text style={styles.actionButtonText}>删除</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 可滑动的内容 */}
+      <Animated.View
+        style={[
+          styles.roomRowContent,
+          { transform: [{ translateX }] },
+          isDragging && styles.roomRowDragging,
+        ]}
+        {...panResponder.panHandlers}
+      >
+        <View style={styles.roomRowLeft}>
+          <TouchableOpacity 
+            onLongPress={onLongPress}
+            onPressOut={onPressOut}
+            style={styles.dragHandle}
+            delayLongPress={200}
+          >
+            <Text style={styles.dragIcon}>☰</Text>
+          </TouchableOpacity>
+          <Text style={styles.roomName}>{room.name}</Text>
+        </View>
+        <View style={styles.roomRowRight}>
+          <Switch
+            value={isVisible}
+            onValueChange={(value) => onToggleVisibility(room.id, value)}
+            trackColor={{ false: '#e0e0e0', true: '#1890ff' }}
+            thumbColor="#fff"
+            style={styles.visibilitySwitch}
+          />
+        </View>
+      </Animated.View>
+    </View>
+  );
+}
 
 export default function EditRoomTypeScreen() {
   const router = useRouter();
@@ -40,6 +167,20 @@ export default function EditRoomTypeScreen() {
   
   // 保存从add-rooms页面返回的新房间名称（还未保存到Redux）
   const [pendingNewRooms, setPendingNewRooms] = useState<string[]>([]);
+  
+  // 房间顺序状态
+  const [roomOrder, setRoomOrder] = useState<string[]>([]);
+  
+  // 房间可见性状态
+  const [roomVisibility, setRoomVisibility] = useState<Record<string, boolean>>({});
+  
+  // 拖拽状态
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  
+  // 编辑房间名称的弹窗
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editingRoomId, setEditingRoomId] = useState<string | null>(null);
+  const [editingRoomName, setEditingRoomName] = useState('');
 
   // 从Redux获取当前房型的房间列表（已保存的）
   const savedRooms = useMemo(() => {
@@ -51,30 +192,32 @@ export default function EditRoomTypeScreen() {
   
   // 判断房间是否已在后端创建（UUID格式的ID）
   const isBackendRoom = (roomId: string): boolean => {
-    // 后端生成的ID是长UUID格式（如 "cmiilgfiu000nc9ovvh33ogsw"）
-    // 前端临时ID是短字符串或数字（如 "1230", "pending_xxx"）
     return roomId.length > 20 && !roomId.startsWith('pending_')
   }
 
   // 组合显示：已保存的房间 + 待保存的新房间
   const currentRooms = useMemo(() => {
     const rooms = [...savedRooms];
-    const existingNames = new Set(rooms.map(r => r.name)); // 使用房间名而不是ID
+    const existingNames = new Set(rooms.map(r => r.name));
     
     // 添加待保存的新房间（临时对象，仅用于显示）
     pendingNewRooms.forEach((roomName, index) => {
-      // 如果房间名已存在，跳过
       if (existingNames.has(roomName)) {
         console.log('⚠️ [EditRoomType] 房间名已存在，跳过:', roomName);
         return;
       }
       
       rooms.push({
-        id: `pending_${roomName}_${index}`, // 使用唯一ID
+        id: `pending_${roomName}_${index}`,
         name: roomName,
         type: formData.name as RoomType,
+        sortOrder: rooms.length,
+        isVisible: true,
       });
     });
+    
+    // 按sortOrder排序
+    rooms.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
     
     console.log('🔄 [EditRoomType] currentRooms重新计算:', {
       savedRoomsCount: savedRooms.length,
@@ -84,6 +227,42 @@ export default function EditRoomTypeScreen() {
     });
     return rooms;
   }, [savedRooms, pendingNewRooms, formData.name]);
+  
+  // 按顺序排列的房间列表
+  const orderedRooms = useMemo(() => {
+    if (roomOrder.length === 0) return currentRooms;
+    
+    const ordered: Room[] = [];
+    const roomMap = new Map(currentRooms.map(r => [r.id, r]));
+    
+    roomOrder.forEach(id => {
+      const room = roomMap.get(id);
+      if (room) ordered.push(room);
+    });
+    
+    // 添加新房间（不在roomOrder中的）
+    currentRooms.forEach(room => {
+      if (!roomOrder.includes(room.id)) {
+        ordered.push(room);
+      }
+    });
+    
+    return ordered;
+  }, [currentRooms, roomOrder]);
+
+  // 初始化房间顺序和可见性
+  useEffect(() => {
+    if (currentRooms.length > 0) {
+      const newOrder = currentRooms.map(r => r.id);
+      setRoomOrder(newOrder);
+      
+      const newVisibility: Record<string, boolean> = {};
+      currentRooms.forEach(room => {
+        newVisibility[room.id] = room.isVisible !== undefined ? room.isVisible : true;
+      });
+      setRoomVisibility(newVisibility);
+    }
+  }, [currentRooms.length]); // 只在房间数量变化时重新初始化
 
   useEffect(() => {
     console.log('🏠 [EditRoomType] 当前房型的房间:', {
@@ -103,7 +282,6 @@ export default function EditRoomTypeScreen() {
   }, [isEditMode, formData.name, allRooms]);
 
   const handleAddRooms = () => {
-    // 使用时间戳作为唯一标识，用于跟踪返回的数据
     const sessionId = Date.now().toString();
     
     console.log('➡️ [EditRoomType] 准备跳转到add-rooms:', {
@@ -123,6 +301,76 @@ export default function EditRoomTypeScreen() {
     });
   };
 
+  // 处理房间顺序调整
+  const handleReorderRooms = (fromIndex: number, toIndex: number) => {
+    const newOrder = [...roomOrder];
+    const [movedItem] = newOrder.splice(fromIndex, 1);
+    newOrder.splice(toIndex, 0, movedItem);
+    setRoomOrder(newOrder);
+  };
+
+  // 处理拖拽
+  const handleDragStart = (index: number) => {
+    setDraggingIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDraggingIndex(null);
+  };
+
+  // 切换房间可见性
+  const handleToggleVisibility = (roomId: string, visible: boolean) => {
+    setRoomVisibility(prev => ({
+      ...prev,
+      [roomId]: visible,
+    }));
+  };
+
+  // 编辑房间名称
+  const handleEditRoom = (roomId: string) => {
+    const room = orderedRooms.find(r => r.id === roomId);
+    if (room) {
+      setEditingRoomId(roomId);
+      setEditingRoomName(room.name);
+      setEditModalVisible(true);
+    }
+  };
+
+  // 保存房间名称编辑
+  const handleSaveRoomName = async () => {
+    if (!editingRoomId || !editingRoomName.trim()) {
+      Alert.alert('提示', '请输入房间名称');
+      return;
+    }
+
+    try {
+      if (isBackendRoom(editingRoomId)) {
+        // 更新后端房间
+        await dataService.rooms.update(editingRoomId, { name: editingRoomName });
+        // 重新加载房间列表
+        const propertyId = await authService.getPropertyId();
+        if (propertyId) {
+          const updatedRooms = await dataService.rooms.getAll(propertyId);
+          dispatch(setRooms(updatedRooms));
+        }
+      } else {
+        // 更新临时房间（在pendingNewRooms中）
+        const oldName = orderedRooms.find(r => r.id === editingRoomId)?.name;
+        if (oldName) {
+          setPendingNewRooms(prev => 
+            prev.map(name => name === oldName ? editingRoomName : name)
+          );
+        }
+      }
+      setEditModalVisible(false);
+      setEditingRoomId(null);
+      setEditingRoomName('');
+    } catch (error: any) {
+      Alert.alert('保存失败', error.message || '无法保存房间名称');
+      console.error('❌ [EditRoomType] 保存房间名称失败:', error);
+    }
+  };
+
   const handleRemoveRoom = (roomId: string) => {
     Alert.alert(
       '确认删除',
@@ -133,24 +381,18 @@ export default function EditRoomTypeScreen() {
           text: '删除',
           style: 'destructive',
           onPress: () => {
-            // 检查是否是待保存的房间（ID以 pending_ 开头）
             if (roomId.startsWith('pending_')) {
-              // 从ID中提取房间名: pending_1234_0 -> 1234
               const roomName = roomId.split('_')[1];
-              // 从待保存列表中移除
               setPendingNewRooms(prev => prev.filter(name => name !== roomName));
               console.log('🗑️ [EditRoomType] 从待保存列表删除房间:', roomName);
             } else {
-              // 调用API删除房间
               (async () => {
                 try {
                   await dataService.rooms.delete(roomId);
-                  // 删除成功后更新Redux
                   dispatch(deleteRoom(roomId));
                   console.log('✅ [EditRoomType] 房间已从云服务删除:', roomId);
                   Alert.alert('成功', '房间已删除');
                 } catch (error: any) {
-                  // 如果是401认证错误，提示用户登录
                   if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
                     Alert.alert('需要登录', '请先登录后再操作');
                   } else {
@@ -178,7 +420,6 @@ export default function EditRoomTypeScreen() {
           onPress: async () => {
             if (params.id) {
               try {
-                // 1. 先删除该房型下的所有房间（从云服务）
                 console.log('🌐 开始删除房型下的所有房间...');
                 for (const room of savedRooms) {
                   try {
@@ -186,17 +427,14 @@ export default function EditRoomTypeScreen() {
                     console.log('✅ [EditRoomType] 房间已从云服务删除:', room.id);
                   } catch (error: any) {
                     console.error('❌ [EditRoomType] 删除房间失败:', room.id, error);
-                    // 如果不是401错误，继续尝试删除其他房间
                     if (!error.message?.includes('401') && !error.message?.includes('Unauthorized')) {
                       // 非认证错误，继续
                     } else {
-                      // 认证错误，抛出
                       throw new Error('需要登录后才能删除房间，请先登录');
                     }
                   }
                 }
                 
-                // 2. 删除Redux中的房型配置
                 dispatch(deleteRoomTypeAction(params.id as string));
                 console.log('✅ [EditRoomType] 房型已从Redux删除');
                 
@@ -238,7 +476,6 @@ export default function EditRoomTypeScreen() {
     }
 
     try {
-      // 保存房型到Redux（房型在前端管理）
       const roomTypeData = {
         id: params.id as string || Date.now().toString(),
         name: formData.name,
@@ -247,24 +484,19 @@ export default function EditRoomTypeScreen() {
         differentiateWeekend: formData.differentiateWeekend,
       };
 
-      // 1. 保存房型配置到Redux
       dispatch(saveRoomType(roomTypeData));
       console.log('💾 房型已保存到Redux:', roomTypeData);
       
-      // 2. 找出所有需要创建到后端的房间（包括临时ID的房间和pendingNewRooms）
       const roomsToCreate: string[] = []
       
-      // 检查currentRooms中的临时ID房间
       currentRooms.forEach(room => {
         if (!isBackendRoom(room.id)) {
-          // 非后端ID，需要创建
           if (!roomsToCreate.includes(room.name)) {
             roomsToCreate.push(room.name)
           }
         }
       })
       
-      // 添加pendingNewRooms
       pendingNewRooms.forEach(name => {
         if (!roomsToCreate.includes(name)) {
           roomsToCreate.push(name)
@@ -273,11 +505,9 @@ export default function EditRoomTypeScreen() {
       
       console.log('🔍 [EditRoomType] 需要创建到后端的房间:', roomsToCreate)
       
-      // 如果有需要创建的房间，调用API
       if (roomsToCreate.length > 0) {
         console.log('🌐 开始创建房间到云服务...');
         
-        // 获取用户的propertyId
         const propertyId = await authService.getPropertyId();
         if (!propertyId) {
           throw new Error('未找到propertyId，请先登录');
@@ -285,18 +515,22 @@ export default function EditRoomTypeScreen() {
         
         console.log('📋 [EditRoomType] 使用propertyId:', propertyId);
         
-        // 为每个房间调用API
-        for (const roomName of roomsToCreate) {
+        for (let i = 0; i < roomsToCreate.length; i++) {
+          const roomName = roomsToCreate[i];
           const roomData = {
             name: roomName,
-            code: roomName, // 使用房间名作为code
+            code: roomName,
             roomType: formData.name,
             maxGuests: 2,
             bedCount: 1,
             bathroomCount: 1,
             basePrice: price,
-            propertyId: propertyId,  // 使用真实的propertyId
+            propertyId: propertyId,
             isActive: true,
+            sortOrder: i,
+            isVisible: roomVisibility[`pending_${roomName}_${i}`] !== undefined 
+              ? roomVisibility[`pending_${roomName}_${i}`] 
+              : true,
           };
           
           try {
@@ -304,7 +538,6 @@ export default function EditRoomTypeScreen() {
             console.log('✅ [EditRoomType] 房间已创建到云服务:', createdRoom.id, roomName);
           } catch (error: any) {
             console.error('❌ [EditRoomType] 创建房间失败:', roomName, error);
-            // 如果是401认证错误，提示用户登录
             if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
               throw new Error('需要登录后才能创建房间，请先登录');
             }
@@ -314,11 +547,44 @@ export default function EditRoomTypeScreen() {
         
         console.log('✅ 所有房间已创建到云服务');
         
-        // 重新加载房间列表，获取后端真实ID（传入propertyId确保使用正确的缓存键）
         const updatedRooms = await dataService.rooms.getAll(propertyId)
         dispatch(setRooms(updatedRooms))
         console.log('✅ 房间列表已更新到Redux，共', updatedRooms.length, '个房间')
-        console.log('📋 [EditRoomType] 更新后的房间:', updatedRooms.map(r => `${r.name}(${r.id})`).join(', '))
+      }
+      
+      // 保存房间顺序和可见性
+      const propertyId = await authService.getPropertyId();
+      if (propertyId) {
+        const updates = orderedRooms
+          .filter(room => isBackendRoom(room.id))
+          .map((room, index) => ({
+            id: room.id,
+            sortOrder: index,
+          }));
+        
+        if (updates.length > 0) {
+          try {
+            await dataService.rooms.batchUpdateOrder(updates);
+            console.log('✅ 房间顺序已保存');
+          } catch (error) {
+            console.error('❌ 保存房间顺序失败:', error);
+          }
+        }
+        
+        // 保存可见性
+        for (const room of orderedRooms) {
+          if (isBackendRoom(room.id)) {
+            const visibility = roomVisibility[room.id];
+            if (visibility !== undefined && visibility !== room.isVisible) {
+              try {
+                await dataService.rooms.updateVisibility(room.id, visibility);
+                console.log('✅ 房间可见性已保存:', room.id, visibility);
+              } catch (error) {
+                console.error('❌ 保存房间可见性失败:', room.id, error);
+              }
+            }
+          }
+        }
       }
       
       const message = isEditMode 
@@ -340,12 +606,10 @@ export default function EditRoomTypeScreen() {
     }
   };
 
-  // 使用useFocusEffect监听页面获得焦点（从add-rooms返回时）
   useFocusEffect(
     React.useCallback(() => {
       console.log('👀 [EditRoomType] 页面获得焦点');
       
-      // 页面获得焦点时检查全局状态
       if (typeof global !== 'undefined' && (global as any).pendingNewRooms) {
         const pending = (global as any).pendingNewRooms;
         
@@ -356,13 +620,11 @@ export default function EditRoomTypeScreen() {
           roomsCount: pending.rooms?.length
         });
         
-        // 只要全局状态有数据就处理（不检查sessionId，因为router.back()会改变params）
         if (pending.rooms && pending.rooms.length > 0) {
           console.log('📝 [EditRoomType] 从全局状态获取新房间:', pending.rooms);
           
           setPendingNewRooms(prev => {
             const combined = [...prev, ...pending.rooms];
-            // 去重
             const uniqueRooms = Array.from(new Set(combined));
             console.log('✅ [EditRoomType] 更新pendingNewRooms:', {
               previous: prev,
@@ -372,7 +634,6 @@ export default function EditRoomTypeScreen() {
             return uniqueRooms;
           });
           
-          // 清除全局状态
           delete (global as any).pendingNewRooms;
           console.log('🧹 [EditRoomType] 已清除全局状态');
         } else {
@@ -381,12 +642,11 @@ export default function EditRoomTypeScreen() {
       } else {
         console.log('📭 [EditRoomType] 全局状态为空');
       }
-    }, []) // 不依赖任何参数，每次获得焦点都检查
+    }, [])
   );
 
   return (
     <View style={styles.container}>
-      {/* 自定义顶部栏 */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Text style={styles.backText}>←</Text>
@@ -398,7 +658,6 @@ export default function EditRoomTypeScreen() {
       </View>
 
       <ScrollView style={styles.content}>
-        {/* 房型信息 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>房型信息</Text>
 
@@ -426,7 +685,6 @@ export default function EditRoomTypeScreen() {
           </View>
         </View>
 
-        {/* 价格信息 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>价格信息</Text>
 
@@ -460,32 +718,36 @@ export default function EditRoomTypeScreen() {
           </View>
         </View>
 
-        {/* 房间列表 */}
         <View style={styles.section}>
           <View style={styles.roomsHeader}>
-            <Text style={styles.sectionTitle}>房间 ({currentRooms.length})</Text>
+            <Text style={styles.sectionTitle}>房间 ({orderedRooms.length})</Text>
             <TouchableOpacity onPress={handleAddRooms} disabled={!formData.name.trim()}>
               <Text style={[styles.addRoomsButton, !formData.name.trim() && styles.disabled]}>⊕ 添加房间</Text>
             </TouchableOpacity>
           </View>
 
-          {currentRooms.length === 0 ? (
+          {orderedRooms.length === 0 ? (
             <View style={styles.noRooms}>
               <Text style={styles.noRoomsText}>暂无房间</Text>
             </View>
           ) : (
-            currentRooms.map((room) => (
-              <View key={room.id} style={styles.roomRow}>
-                <Text style={styles.roomName}>{room.name}</Text>
-                <TouchableOpacity onPress={() => handleRemoveRoom(room.id)}>
-                  <Text style={styles.deleteIcon}>🗑</Text>
-                </TouchableOpacity>
-              </View>
+            orderedRooms.map((room, index) => (
+              <DraggableRoomRow
+                key={room.id}
+                room={room}
+                index={index}
+                isVisible={roomVisibility[room.id] !== undefined ? roomVisibility[room.id] : true}
+                onToggleVisibility={handleToggleVisibility}
+                onDelete={handleRemoveRoom}
+                onEdit={handleEditRoom}
+                onLongPress={() => handleDragStart(index)}
+                onPressOut={handleDragEnd}
+                isDragging={draggingIndex === index}
+              />
             ))
           )}
         </View>
 
-        {/* 删除房型按钮 */}
         {isEditMode && (
           <TouchableOpacity
             style={styles.deleteButton}
@@ -495,6 +757,42 @@ export default function EditRoomTypeScreen() {
           </TouchableOpacity>
         )}
       </ScrollView>
+
+      {/* 编辑房间名称弹窗 */}
+      <Modal
+        visible={editModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>编辑房间名称</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="请输入房间名称"
+              placeholderTextColor="#ccc"
+              value={editingRoomName}
+              onChangeText={setEditingRoomName}
+              autoFocus
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalCancelButton]}
+                onPress={() => setEditModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalConfirmButton]}
+                onPress={handleSaveRoomName}
+              >
+                <Text style={styles.modalConfirmText}>保存</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -605,20 +903,77 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
   },
-  roomRow: {
+  roomRowContainer: {
+    position: 'relative',
+    height: 50,
+    marginVertical: 1,
+  },
+  actionsContainer: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionButton: {
+    width: 75,
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editButton: {
+    backgroundColor: '#1890ff',
+  },
+  deleteButton: {
+    backgroundColor: '#ff4d4f',
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  roomRowContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 12,
+    paddingHorizontal: 15,
+    backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+  },
+  roomRowDragging: {
+    opacity: 0.8,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  roomRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  roomRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dragHandle: {
+    marginRight: 12,
+    padding: 4,
+  },
+  dragIcon: {
+    fontSize: 18,
+    color: '#999',
   },
   roomName: {
     fontSize: 16,
     color: '#333',
   },
-  deleteIcon: {
-    fontSize: 18,
+  visibilitySwitch: {
+    marginLeft: 12,
   },
   deleteButton: {
     backgroundColor: '#fff',
@@ -632,5 +987,59 @@ const styles = StyleSheet.create({
   deleteButtonText: {
     fontSize: 16,
     color: '#ff4d4f',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    width: '80%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#333',
+    marginBottom: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalCancelButton: {
+    backgroundColor: '#f0f0f0',
+  },
+  modalConfirmButton: {
+    backgroundColor: '#1890ff',
+  },
+  modalCancelText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  modalConfirmText: {
+    fontSize: 16,
+    color: '#fff',
   },
 });

@@ -20,6 +20,7 @@ import {
 import { RoomsService } from './rooms.service'
 import { CreateRoomDto } from './dto/create-room.dto'
 import { UpdateRoomDto } from './dto/update-room.dto'
+import { BatchUpdateOrderDto } from './dto/batch-update-order.dto'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 
 @ApiTags('rooms')
@@ -91,6 +92,17 @@ export class RoomsController {
       new Date(startDate),
       new Date(endDate),
     )
+  }
+
+  @Patch('batch-order')
+  @ApiOperation({ summary: '批量更新房间顺序' })
+  @ApiResponse({ status: 200, description: '更新成功' })
+  @ApiResponse({ status: 404, description: '部分房间不存在' })
+  batchUpdateOrder(
+    @Request() req: any,
+    @Body() batchUpdateOrderDto: BatchUpdateOrderDto,
+  ) {
+    return this.roomsService.batchUpdateOrder(req.user.tenantId, batchUpdateOrderDto)
   }
 }
 

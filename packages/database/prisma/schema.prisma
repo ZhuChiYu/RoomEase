@@ -145,6 +145,10 @@ model Room {
   // 基础价格
   basePrice   Decimal @default(0)
   
+  // 显示设置
+  sortOrder   Int     @default(0) // 排序顺序
+  isVisible   Boolean @default(true) // 是否在房态日历中显示
+  
   // 物业关联
   propertyId String
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)

@@ -9,12 +9,15 @@ export interface RoomTypeConfig {
   shortName: string  // 简称
   defaultPrice: number  // 默认价格
   differentiateWeekend?: boolean  // 是否区分周末
+  sortOrder?: number  // 排序顺序
 }
 
 export interface Room {
   id: string
   name: string
   type: RoomType
+  sortOrder?: number
+  isVisible?: boolean
 }
 
 export type RoomStatus = 'available' | 'occupied' | 'dirty' | 'closed'

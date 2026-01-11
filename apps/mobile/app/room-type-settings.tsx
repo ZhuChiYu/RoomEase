@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,59 @@ import {
   ScrollView,
   Platform,
   StatusBar,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAppSelector, useAppDispatch } from './store/hooks';
-import { setRooms } from './store/calendarSlice';
+import { setRooms, setRoomTypes } from './store/calendarSlice';
 import { dataService } from './services/dataService';
+import type { RoomTypeConfig } from './store/types';
+
+// 可拖拽的房型卡片组件
+function DraggableRoomTypeCard({ 
+  roomType, 
+  onPress,
+  onLongPress,
+  onPressOut,
+  isDragging,
+}: { 
+  roomType: any; 
+  onPress: () => void;
+  onLongPress: () => void;
+  onPressOut: () => void;
+  isDragging: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.roomTypeCard, isDragging && styles.roomTypeCardDragging]}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      onPressOut={onPressOut}
+      delayLongPress={300}
+      activeOpacity={0.7}
+    >
+      <View style={styles.roomTypeContent}>
+        <TouchableOpacity 
+          style={styles.dragHandle}
+          onLongPress={onLongPress}
+          onPressOut={onPressOut}
+          delayLongPress={200}
+        >
+          <Text style={styles.dragIcon}>☰</Text>
+        </TouchableOpacity>
+        <View style={styles.roomTypeInfo}>
+          <Text style={styles.roomTypeName}>{roomType.name}</Text>
+          <Text style={styles.roomTypeSubName}>{roomType.shortName} · ¥{roomType.defaultPrice}</Text>
+        </View>
+        <View style={styles.roomTypeRight}>
+          <Text style={styles.roomCount}>{roomType.roomCount}间</Text>
+          <Text style={styles.arrow}>›</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
 
 export default function RoomTypeSettingsScreen() {
   const router = useRouter();
@@ -20,6 +68,12 @@ export default function RoomTypeSettingsScreen() {
   // 从Redux获取房型和房间数据
   const roomTypes = useAppSelector(state => state.calendar.roomTypes);
   const rooms = useAppSelector(state => state.calendar.rooms);
+  
+  // 房型顺序状态
+  const [roomTypeOrder, setRoomTypeOrder] = useState<string[]>([]);
+  
+  // 拖拽状态
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
 
   console.log('🏠 [房型设置] 当前房型数据:', roomTypes);
   console.log('🚪 [房型设置] 当前房间数据:', rooms);
@@ -30,7 +84,7 @@ export default function RoomTypeSettingsScreen() {
     console.log('📊 [房型设置] roomTypes数量:', roomTypes.length);
     console.log('📊 [房型设置] rooms总数:', rooms.length);
     
-    return roomTypes.map(roomType => {
+    const typesWithCount = roomTypes.map(roomType => {
       const typeRooms = rooms.filter(room => room.type === roomType.name);
       const roomCount = typeRooms.length;
       const roomIds = typeRooms.map(room => room.id);
@@ -43,7 +97,42 @@ export default function RoomTypeSettingsScreen() {
         roomIds,
       };
     });
+    
+    // 按sortOrder排序
+    typesWithCount.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+    
+    return typesWithCount;
   }, [roomTypes, rooms]);
+  
+  // 按顺序排列的房型列表
+  const orderedRoomTypes = useMemo(() => {
+    if (roomTypeOrder.length === 0) return roomTypesWithRoomCount;
+    
+    const ordered: any[] = [];
+    const typeMap = new Map(roomTypesWithRoomCount.map(t => [t.id, t]));
+    
+    roomTypeOrder.forEach(id => {
+      const type = typeMap.get(id);
+      if (type) ordered.push(type);
+    });
+    
+    // 添加新房型（不在roomTypeOrder中的）
+    roomTypesWithRoomCount.forEach(type => {
+      if (!roomTypeOrder.includes(type.id)) {
+        ordered.push(type);
+      }
+    });
+    
+    return ordered;
+  }, [roomTypesWithRoomCount, roomTypeOrder]);
+  
+  // 初始化房型顺序
+  useEffect(() => {
+    if (roomTypesWithRoomCount.length > 0 && roomTypeOrder.length === 0) {
+      const newOrder = roomTypesWithRoomCount.map(t => t.id);
+      setRoomTypeOrder(newOrder);
+    }
+  }, [roomTypesWithRoomCount.length]);
 
   // 页面获得焦点时强制从API重新加载房间数据
   useFocusEffect(
@@ -71,6 +160,25 @@ export default function RoomTypeSettingsScreen() {
   };
 
   const handleEditRoomType = (roomType: any) => {
+    // 在跳转前保存当前的房型顺序
+    if (roomTypeOrder.length > 0 && roomTypeOrder.length === roomTypes.length) {
+      const updatedRoomTypes = roomTypes.map(rt => {
+        const index = roomTypeOrder.indexOf(rt.id);
+        return {
+          ...rt,
+          sortOrder: index >= 0 ? index : 999,
+        };
+      });
+      // 只在顺序真正变化时才更新
+      const hasChanged = updatedRoomTypes.some((rt, idx) => 
+        rt.sortOrder !== roomTypes[idx].sortOrder
+      );
+      if (hasChanged) {
+        dispatch(setRoomTypes(updatedRoomTypes));
+        console.log('💾 [房型设置] 房型顺序已保存到Redux');
+      }
+    }
+    
     router.push({
       pathname: '/edit-room-type',
       params: {
@@ -82,6 +190,23 @@ export default function RoomTypeSettingsScreen() {
         rooms: JSON.stringify(roomType.roomIds || []),
       },
     });
+  };
+  
+  // 处理房型顺序调整
+  const handleReorderRoomTypes = (fromIndex: number, toIndex: number) => {
+    const newOrder = [...roomTypeOrder];
+    const [movedItem] = newOrder.splice(fromIndex, 1);
+    newOrder.splice(toIndex, 0, movedItem);
+    setRoomTypeOrder(newOrder);
+  };
+
+  // 处理拖拽
+  const handleDragStart = (index: number) => {
+    setDraggingIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDraggingIndex(null);
   };
 
   return (
@@ -95,7 +220,7 @@ export default function RoomTypeSettingsScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      {roomTypesWithRoomCount.length === 0 ? (
+      {orderedRoomTypes.length === 0 ? (
         /* 空状态 */
         <View style={styles.emptyContainer}>
           <View style={styles.emptyIcon}>
@@ -108,26 +233,18 @@ export default function RoomTypeSettingsScreen() {
         /* 房型列表 */
         <ScrollView style={styles.content}>
           <View style={styles.summary}>
-            <Text style={styles.summaryText}>共 {roomTypesWithRoomCount.length} 个房型</Text>
+            <Text style={styles.summaryText}>共 {orderedRoomTypes.length} 个房型</Text>
           </View>
 
-          {roomTypesWithRoomCount.map((roomType) => (
-            <TouchableOpacity
+          {orderedRoomTypes.map((roomType, index) => (
+            <DraggableRoomTypeCard
               key={roomType.id}
-              style={styles.roomTypeCard}
+              roomType={roomType}
               onPress={() => handleEditRoomType(roomType)}
-            >
-              <View style={styles.roomTypeHeader}>
-                <View>
-                  <Text style={styles.roomTypeName}>{roomType.name}</Text>
-                  <Text style={styles.roomTypeSubName}>{roomType.shortName} · ¥{roomType.defaultPrice}</Text>
-                </View>
-                <View style={styles.roomTypeRight}>
-                  <Text style={styles.roomCount}>{roomType.roomCount}间</Text>
-                  <Text style={styles.arrow}>›</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
+              onLongPress={() => handleDragStart(index)}
+              onPressOut={handleDragEnd}
+              isDragging={draggingIndex === index}
+            />
           ))}
         </ScrollView>
       )}
@@ -212,12 +329,30 @@ const styles = StyleSheet.create({
     marginHorizontal: 15,
     marginBottom: 10,
     borderRadius: 8,
-    padding: 15,
   },
-  roomTypeHeader: {
+  roomTypeCardDragging: {
+    opacity: 0.8,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+  },
+  roomTypeContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    padding: 15,
+  },
+  dragHandle: {
+    marginRight: 12,
+    padding: 4,
+  },
+  dragIcon: {
+    fontSize: 18,
+    color: '#999',
+  },
+  roomTypeInfo: {
+    flex: 1,
   },
   roomTypeName: {
     fontSize: 16,

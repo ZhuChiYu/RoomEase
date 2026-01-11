@@ -69,5 +69,15 @@ export class CreateRoomDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean
+
+  @ApiProperty({ example: 0, default: 0, description: '排序顺序' })
+  @IsOptional()
+  @IsNumber()
+  sortOrder?: number
+
+  @ApiProperty({ example: true, default: true, description: '是否在房态日历中显示' })
+  @IsOptional()
+  @IsBoolean()
+  isVisible?: boolean
 }
 

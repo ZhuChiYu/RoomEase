@@ -17,6 +17,8 @@ export interface Room {
   basePrice: number
   propertyId: string
   isActive: boolean
+  sortOrder: number
+  isVisible: boolean
   createdAt: string
   updatedAt: string
 }
@@ -36,6 +38,8 @@ export interface CreateRoomDto {
   basePrice: number
   propertyId: string
   isActive?: boolean
+  sortOrder?: number
+  isVisible?: boolean
 }
 
 export class RoomsService {
@@ -70,6 +74,14 @@ export class RoomsService {
     return this.client.get(`/rooms/${id}/availability`, {
       params: { startDate, endDate },
     })
+  }
+
+  async batchUpdateOrder(updates: Array<{ id: string; sortOrder: number }>): Promise<ApiResponse<void>> {
+    return this.client.patch('/rooms/batch-order', { updates })
+  }
+
+  async updateVisibility(id: string, isVisible: boolean): Promise<ApiResponse<Room>> {
+    return this.client.patch(`/rooms/${id}`, { isVisible })
   }
 }
 
