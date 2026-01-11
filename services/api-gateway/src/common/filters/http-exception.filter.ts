@@ -62,6 +62,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
    * 翻译常见的英文错误消息为中文
    */
   private translateErrorMessage(message: string, status: number): string {
+    // 如果message不是字符串（可能是对象），转换为字符串
+    if (typeof message !== 'string') {
+      message = JSON.stringify(message)
+    }
+    
     // 如果已经是中文，直接返回
     if (/[\u4e00-\u9fa5]/.test(message)) {
       return message
