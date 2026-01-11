@@ -9,6 +9,7 @@ import {
   UseGuards,
   Request,
   Query,
+  Logger,
 } from '@nestjs/common'
 import {
   ApiTags,
@@ -28,6 +29,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class RoomsController {
+  private readonly logger = new Logger(RoomsController.name)
+  
   constructor(private readonly roomsService: RoomsService) {}
 
   @Post()
@@ -102,6 +105,15 @@ export class RoomsController {
     @Request() req: any,
     @Body() batchUpdateOrderDto: BatchUpdateOrderDto,
   ) {
+    this.logger.log(`批量更新房间顺序请求 - 用户: ${req.user?.userId || 'unknown'}, 租户: ${req.user?.tenantId || 'unknown'}`)
+    this.logger.log(`收到的DTO:`, JSON.stringify(batchUpdateOrderDto))
+    this.logger.log(`DTO类型:`, batchUpdateOrderDto.constructor.name)
+    this.logger.log(`updates字段:`, Array.isArray(batchUpdateOrderDto.updates) ? `数组,长度${batchUpdateOrderDto.updates.length}` : '非数组')
+    
+    if (batchUpdateOrderDto.updates && batchUpdateOrderDto.updates.length > 0) {
+      this.logger.log(`第一个update:`, JSON.stringify(batchUpdateOrderDto.updates[0]))
+    }
+    
     return this.roomsService.batchUpdateOrder(req.user.tenantId, batchUpdateOrderDto)
   }
 }

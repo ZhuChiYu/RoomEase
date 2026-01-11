@@ -21,6 +21,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     // 提取错误消息
     let message: string | string[]
+    let validationErrors: string[] | undefined
     
     if (typeof exceptionResponse === 'string') {
       message = exceptionResponse
@@ -30,8 +31,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message = '请求失败'
     }
 
-    // 如果消息是数组（验证错误），取第一个
+    // 如果消息是数组（验证错误），保留完整的错误信息用于调试
     if (Array.isArray(message)) {
+      validationErrors = message
+      // 记录完整的验证错误到日志
+      console.error('[Validation Error]', JSON.stringify(validationErrors, null, 2))
       message = message[0]
     }
 
@@ -39,12 +43,19 @@ export class HttpExceptionFilter implements ExceptionFilter {
     message = this.translateErrorMessage(message, status)
 
     // 返回统一的错误响应格式
-    response.status(status).json({
+    const errorResponse: any = {
       statusCode: status,
       message: message,
       error: this.getErrorName(status),
       timestamp: new Date().toISOString(),
-    })
+    }
+    
+    // 在开发环境或验证错误时，返回详细的错误信息
+    if (validationErrors && (process.env.NODE_ENV !== 'production' || status === 400)) {
+      errorResponse.validationErrors = validationErrors
+    }
+    
+    response.status(status).json(errorResponse)
   }
 
   /**

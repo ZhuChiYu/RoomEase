@@ -42,6 +42,13 @@ async function bootstrap() {
     transform: true,
     transformOptions: {
       enableImplicitConversion: true
+    },
+    // 添加详细的错误消息
+    disableErrorMessages: false,
+    exceptionFactory: (errors) => {
+      // 打印详细的验证错误
+      console.error('🔴 验证失败:', JSON.stringify(errors, null, 2))
+      return new (require('@nestjs/common').BadRequestException)(errors)
     }
   }))
 
