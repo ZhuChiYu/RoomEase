@@ -576,6 +576,14 @@ export const api = {
       const response = await apiClient.delete(`/rooms/${id}`)
       return response.data
     },
+    batchUpdateOrder: async (updates: Array<{ id: string; sortOrder: number }>) => {
+      const response = await apiClient.patch('/rooms/batch-order', { updates })
+      return response.data
+    },
+    updateVisibility: async (id: string, isVisible: boolean) => {
+      const response = await apiClient.patch(`/rooms/${id}`, { isVisible })
+      return response.data
+    },
   },
 
   // 预订相关

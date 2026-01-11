@@ -192,6 +192,24 @@ export const dataService = {
       await cache.clear(CACHE_KEYS.ROOMS)
       await cache.clear(`${CACHE_KEYS.ROOMS}_${propertyId}`)
     },
+
+    batchUpdateOrder: async (updates: Array<{ id: string; sortOrder: number }>): Promise<void> => {
+      console.log('🌐 批量更新房间顺序')
+      await api.rooms.batchUpdateOrder(updates)
+      // 清除所有房间相关缓存
+      const propertyId = await getPropertyId()
+      await cache.clear(CACHE_KEYS.ROOMS)
+      await cache.clear(`${CACHE_KEYS.ROOMS}_${propertyId}`)
+    },
+
+    updateVisibility: async (id: string, isVisible: boolean): Promise<void> => {
+      console.log('🌐 更新房间可见性:', id, isVisible)
+      await api.rooms.updateVisibility(id, isVisible)
+      // 清除所有房间相关缓存
+      const propertyId = await getPropertyId()
+      await cache.clear(CACHE_KEYS.ROOMS)
+      await cache.clear(`${CACHE_KEYS.ROOMS}_${propertyId}`)
+    },
   },
 
   // ============= 预订相关 =============

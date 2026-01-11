@@ -1,12 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsArray, ValidateNested } from 'class-validator'
+import { IsArray, ValidateNested, IsString, IsNumber } from 'class-validator'
 import { Type } from 'class-transformer'
 
 class RoomOrderUpdate {
   @ApiProperty({ example: 'room-id-123' })
+  @IsString()
   id: string
 
   @ApiProperty({ example: 0 })
+  @IsNumber()
   sortOrder: number
 }
 

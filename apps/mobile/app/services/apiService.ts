@@ -117,6 +117,22 @@ export const roomsService = {
       throw new Error(response.error || '删除房间失败')
     }
   },
+
+  batchUpdateOrder: async (updates: Array<{ id: string; sortOrder: number }>): Promise<void> => {
+    console.log('🏠 [API-Rooms] 批量更新房间顺序:', updates.length)
+    const response = await apiClient.patch('/rooms/batch-order', { updates })
+    if (!response.success) {
+      throw new Error(response.error || '批量更新房间顺序失败')
+    }
+  },
+
+  updateVisibility: async (id: string, isVisible: boolean): Promise<void> => {
+    console.log('🏠 [API-Rooms] 更新房间可见性:', id, isVisible)
+    const response = await apiClient.patch(`/rooms/${id}`, { isVisible })
+    if (!response.success) {
+      throw new Error(response.error || '更新房间可见性失败')
+    }
+  },
 }
 
 // ============= 预订服务 =============
